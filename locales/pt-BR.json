@@ -75,6 +75,23 @@
     "warn_no_admin_title": "[AVISO] Nenhum administrador cadastrado!",
     "warn_no_admin_help": "Execute './komainu --register' via terminal/SSH para cadastrar sua Passkey com segurança.\n",
     "server_starting": "Iniciando Komainu para o container '{}' na porta {}"
+  },
+  "errors": {
+    "container_not_found": "Container '{name}' não foi encontrado no Docker.",
+    "docker_socket_unavailable": "Socket do Docker inacessível em '{path}'. Verifique se o daemon do Docker está rodando e acessível.",
+    "docker_generic": "Erro de comunicação com o Docker",
+    "container_start_failed": "Falha ao iniciar o container",
+    "container_stop_failed": "Falha ao parar o container",
+    "container_restart_failed": "Falha ao reiniciar o container",
+    "image_pull_failed": "Falha ao baixar imagem mais recente",
+    "container_rebuild_failed": "Falha ao recriar o container",
+    "no_admin_registered": "Nenhum administrador cadastrado. Gere uma chave de acesso com './komainu --register'.",
+    "already_registered": "Um administrador já está cadastrado.",
+    "invalid_token": "Token de registro inválido ou expirado.",
+    "session_expired": "Sessão de autenticação expirada ou inexistente. Tente novamente.",
+    "store_error": "Erro no armazenamento de credenciais",
+    "webauthn_error": "Erro na autenticação por Passkey",
+    "unauthorized": "Acesso não autorizado. Por favor, faça login."
   }
 }
 

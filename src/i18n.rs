@@ -9,6 +9,7 @@ pub struct Translations {
     pub dashboard: DashboardTranslations,
     pub metrics: MetricsTranslations,
     pub cli: CliTranslations,
+    pub errors: ErrorsTranslations,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +98,25 @@ pub struct CliTranslations {
     pub warn_no_admin_title: String,
     pub warn_no_admin_help: String,
     pub server_starting: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorsTranslations {
+    pub container_not_found: String,
+    pub docker_socket_unavailable: String,
+    pub docker_generic: String,
+    pub container_start_failed: String,
+    pub container_stop_failed: String,
+    pub container_restart_failed: String,
+    pub image_pull_failed: String,
+    pub container_rebuild_failed: String,
+    pub no_admin_registered: String,
+    pub already_registered: String,
+    pub invalid_token: String,
+    pub session_expired: String,
+    pub store_error: String,
+    pub webauthn_error: String,
+    pub unauthorized: String,
 }
 
 pub struct I18n;

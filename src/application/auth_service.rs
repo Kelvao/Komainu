@@ -91,7 +91,7 @@ impl AuthService {
             let mut states = self.reg_states.lock().await;
             states
                 .remove(&reg_id)
-                .ok_or_else(|| AuthError::WebauthnError("Sessão de registro expirada ou inexistente".to_string()))?
+                .ok_or(AuthError::SessionExpired)?
         };
 
         let passkey = self
@@ -136,7 +136,7 @@ impl AuthService {
             let mut states = self.auth_states.lock().await;
             states
                 .remove(&auth_id)
-                .ok_or_else(|| AuthError::WebauthnError("Sessão de autenticação expirada ou inexistente".to_string()))?
+                .ok_or(AuthError::SessionExpired)?
         };
 
         self.webauthn

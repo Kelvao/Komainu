@@ -75,6 +75,23 @@
     "warn_no_admin_title": "[NOTICE] No administrator registered!",
     "warn_no_admin_help": "Run './komainu --register' via terminal/SSH to register your Passkey securely.",
     "server_starting": "Starting Komainu for container '{}' on port {}"
+  },
+  "errors": {
+    "container_not_found": "Container '{name}' was not found in Docker.",
+    "docker_socket_unavailable": "Docker socket unreachable at '{path}'. Verify the Docker daemon is active and accessible.",
+    "docker_generic": "Docker communication error",
+    "container_start_failed": "Failed to start container",
+    "container_stop_failed": "Failed to stop container",
+    "container_restart_failed": "Failed to restart container",
+    "image_pull_failed": "Failed to pull latest image",
+    "container_rebuild_failed": "Failed to recreate container",
+    "no_admin_registered": "No administrator registered. Generate an access key using './komainu --register'.",
+    "already_registered": "An administrator is already registered.",
+    "invalid_token": "Invalid or expired registration token.",
+    "session_expired": "Authentication session expired or not found. Please try again.",
+    "store_error": "Credential storage error",
+    "webauthn_error": "Passkey authentication error",
+    "unauthorized": "Unauthorized access. Please log in."
   }
 }
 

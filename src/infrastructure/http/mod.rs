@@ -201,7 +201,7 @@ struct LoginStartResponse {
 async fn login_start_handler(State(state): State<AppState>) -> Response {
     match state.auth_service.start_authentication().await {
         Ok((auth_id, challenge)) => Json(LoginStartResponse { auth_id, challenge }).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_localized(&state.i18n)).into_response(),
     }
 }
 
@@ -230,7 +230,7 @@ async fn login_finish_handler(
             let jar = jar.add(cookie);
             (jar, state.i18n.common.authenticated_success.clone()).into_response()
         }
-        Err(e) => (StatusCode::UNAUTHORIZED, e.to_string()).into_response(),
+        Err(e) => (StatusCode::UNAUTHORIZED, e.to_localized(&state.i18n)).into_response(),
     }
 }
 
@@ -374,7 +374,7 @@ async fn register_start_handler(
 
     match state.auth_service.start_registration(&token).await {
         Ok((reg_id, challenge)) => Json(RegisterStartResponse { reg_id, challenge }).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_localized(&state.i18n)).into_response(),
     }
 }
 
@@ -404,7 +404,7 @@ async fn register_finish_handler(
         .await
     {
         Ok(_) => (StatusCode::OK, state.i18n.common.passkey_registered_success.clone()).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_localized(&state.i18n)).into_response(),
     }
 }
 
@@ -501,7 +501,7 @@ async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppSt
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.start().await.err().map(|e| e.to_string());
+    let err = state.container_service.start().await.err().map(|e| e.to_localized(&state.i18n));
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
@@ -509,7 +509,7 @@ async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppSta
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.stop().await.err().map(|e| e.to_string());
+    let err = state.container_service.stop().await.err().map(|e| e.to_localized(&state.i18n));
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
@@ -517,7 +517,7 @@ async fn container_restart_handler(jar: SignedCookieJar, State(state): State<App
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.restart().await.err().map(|e| e.to_string());
+    let err = state.container_service.restart().await.err().map(|e| e.to_localized(&state.i18n));
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
@@ -525,7 +525,7 @@ async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppS
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.update_image().await.err().map(|e| e.to_string());
+    let err = state.container_service.update_image().await.err().map(|e| e.to_localized(&state.i18n));
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
@@ -533,7 +533,7 @@ async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<App
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.rebuild().await.err().map(|e| e.to_string());
+    let err = state.container_service.rebuild().await.err().map(|e| e.to_localized(&state.i18n));
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
@@ -544,9 +544,14 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
 
     let error_banner = match action_error {
         Some(e) => format!(
-            r##"<div class="lg:col-span-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center gap-2">
-                <svg class="w-5 h-5 fill-current shrink-0" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
-                <span><strong>{}</strong> {}</span>
+            r##"<div id="action-error-banner" class="lg:col-span-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 fill-current shrink-0" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+                    <span><strong>{}</strong> {}</span>
+                </div>
+                <button type="button" onclick="document.getElementById('action-error-banner').remove()" class="text-rose-400/70 hover:text-rose-300 transition p-1 rounded-lg hover:bg-rose-500/20" title="Dismiss">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>"##,
             i18n.common.operation_failed,
             e

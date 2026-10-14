@@ -28,7 +28,7 @@ impl DockerAdapter {
             return Ok(d.clone());
         }
         Docker::connect_with_unix(&self.socket_path, 120, bollard::API_DEFAULT_VERSION)
-            .map_err(|e| ContainerError::Infrastructure(format!("Docker socket '{}' inacessível: {e}", self.socket_path)))
+            .map_err(|_| ContainerError::SocketUnavailable(self.socket_path.clone()))
     }
 }
 
@@ -120,7 +120,7 @@ impl ContainerPort for DockerAdapter {
             docker
                 .start_container::<String>(&name, None)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(e.to_string()))
+                .map_err(|e| ContainerError::StartFailed(e.to_string()))
         })
     }
 
@@ -131,7 +131,7 @@ impl ContainerPort for DockerAdapter {
             docker
                 .stop_container(&name, None)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(e.to_string()))
+                .map_err(|e| ContainerError::StopFailed(e.to_string()))
         })
     }
 
@@ -142,7 +142,7 @@ impl ContainerPort for DockerAdapter {
             docker
                 .restart_container(&name, None)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(e.to_string()))
+                .map_err(|e| ContainerError::RestartFailed(e.to_string()))
         })
     }
 
@@ -168,7 +168,7 @@ impl ContainerPort for DockerAdapter {
             let mut stream = docker.create_image(options, None, None);
             while let Some(item) = stream.next().await {
                 if let Err(e) = item {
-                    return Err(ContainerError::Infrastructure(format!("Falha no download da imagem: {e}")));
+                    return Err(ContainerError::ImagePullFailed(e.to_string()));
                 }
             }
 
@@ -180,22 +180,24 @@ impl ContainerPort for DockerAdapter {
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
+
+            // 1. Inspecionar container atual para guardar configurações antes de remover
             let inspect = docker
                 .inspect_container(&name, None)
                 .await
                 .map_err(|e| ContainerError::Infrastructure(e.to_string()))?;
 
-            // 1. Pull da imagem mais recente
+            // 2. Pull da imagem mais recente
             self.update_image(&name).await?;
 
-            // 2. Parar container se estiver rodando
+            // 3. Parar container se estiver rodando
             let _ = docker.stop_container(&name, None).await;
 
-            // 3. Remover container antigo
+            // 4. Remover container antigo
             docker
                 .remove_container(&name, None)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(format!("Falha ao remover container para reconstrução: {e}")))?;
+                .map_err(|e| ContainerError::RebuildFailed(format!("Failed to remove container: {e}")))?;
 
             let networking_config = inspect.network_settings.and_then(|ns| {
                 ns.networks.map(|networks| bollard::container::NetworkingConfig {
@@ -203,7 +205,8 @@ impl ContainerPort for DockerAdapter {
                 })
             });
 
-            // 4. Recriar com as mesmas configurações de volume, ambiente e rede
+            // 5. Recriar com as mesmas configurações de volume, ambiente e rede
+
             let create_config = bollard::container::Config {
                 image: inspect.config.as_ref().and_then(|c| c.image.clone()),
                 env: inspect.config.as_ref().and_then(|c| c.env.clone()),
@@ -225,13 +228,13 @@ impl ContainerPort for DockerAdapter {
             docker
                 .create_container(create_options, create_config)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(format!("Falha ao recriar container: {e}")))?;
+                .map_err(|e| ContainerError::RebuildFailed(format!("Failed to recreate container: {e}")))?;
 
             // 5. Iniciar o novo container
             docker
                 .start_container::<String>(&name, None)
                 .await
-                .map_err(|e| ContainerError::Infrastructure(format!("Falha ao iniciar novo container: {e}")))?;
+                .map_err(|e| ContainerError::StartFailed(e.to_string()))?;
 
             Ok(())
         })
