@@ -1,17 +1,29 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
 use crate::domain::auth::{AuthError, CredentialStorePort};
 
+const STATE_TTL_SECS: u64 = 300; // 5 minutos
+const MAX_PENDING_STATES: usize = 50;
+
+fn prune_expired<T>(map: &mut HashMap<Uuid, (Instant, T)>) {
+    let now = Instant::now();
+    map.retain(|_, (created_at, _)| now.duration_since(*created_at).as_secs() < STATE_TTL_SECS);
+    if map.len() >= MAX_PENDING_STATES {
+        map.clear();
+    }
+}
+
 pub struct AuthService {
     webauthn: Arc<Webauthn>,
     store: Arc<dyn CredentialStorePort>,
     active_reg_token: Arc<Mutex<Option<String>>>,
-    reg_states: Arc<Mutex<HashMap<Uuid, PasskeyRegistration>>>,
-    auth_states: Arc<Mutex<HashMap<Uuid, PasskeyAuthentication>>>,
+    reg_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyRegistration)>>>,
+    auth_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyAuthentication)>>>,
 }
 
 impl AuthService {
@@ -64,7 +76,8 @@ impl AuthService {
 
         let reg_id = Uuid::new_v4();
         let mut states = self.reg_states.lock().await;
-        states.insert(reg_id, reg_state);
+        prune_expired(&mut states);
+        states.insert(reg_id, (Instant::now(), reg_state));
 
         Ok((reg_id, ccr))
     }
@@ -74,11 +87,11 @@ impl AuthService {
         reg_id: Uuid,
         reg_response: &RegisterPublicKeyCredential,
     ) -> Result<(), AuthError> {
-        let reg_state = {
+        let (_, reg_state) = {
             let mut states = self.reg_states.lock().await;
             states
                 .remove(&reg_id)
-                .ok_or_else(|| AuthError::WebauthnError("Sessão de registro expirada".to_string()))?
+                .ok_or_else(|| AuthError::WebauthnError("Sessão de registro expirada ou inexistente".to_string()))?
         };
 
         let passkey = self
@@ -108,7 +121,8 @@ impl AuthService {
 
         let auth_id = Uuid::new_v4();
         let mut states = self.auth_states.lock().await;
-        states.insert(auth_id, auth_state);
+        prune_expired(&mut states);
+        states.insert(auth_id, (Instant::now(), auth_state));
 
         Ok((auth_id, rcr))
     }
@@ -118,11 +132,11 @@ impl AuthService {
         auth_id: Uuid,
         auth_response: &PublicKeyCredential,
     ) -> Result<(), AuthError> {
-        let auth_state = {
+        let (_, auth_state) = {
             let mut states = self.auth_states.lock().await;
             states
                 .remove(&auth_id)
-                .ok_or_else(|| AuthError::WebauthnError("Sessão de autenticação expirada".to_string()))?
+                .ok_or_else(|| AuthError::WebauthnError("Sessão de autenticação expirada ou inexistente".to_string()))?
         };
 
         self.webauthn
