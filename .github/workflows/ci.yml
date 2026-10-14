@@ -25,36 +25,37 @@ jobs:
         run: cargo test --verbose
 
   build:
-    name: Build & Compress Binary
+    name: Build & Compress Binary (Static Musl)
     needs: test
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Rust toolchain & cache
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-
-      - name: Install UPX
+      - name: Install musl tools and UPX
         run: |
           sudo apt-get update
-          sudo apt-get install -y upx
+          sudo apt-get install -y musl-tools upx
 
-      - name: Build release binary
-        run: cargo build --release
+      - name: Setup Rust toolchain for musl
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: x86_64-unknown-linux-musl
+
+      - name: Build release binary (statically linked)
+        run: cargo build --release --target x86_64-unknown-linux-musl
 
       - name: Compress binary with UPX
-        run: upx --best --lzma target/release/komainu
+        run: upx --best --lzma target/x86_64-unknown-linux-musl/release/komainu
 
-      - name: Verify compressed binary
+      - name: Verify static binary
         run: |
-          ls -lh target/release/komainu
-          file target/release/komainu
+          ls -lh target/x86_64-unknown-linux-musl/release/komainu
+          file target/x86_64-unknown-linux-musl/release/komainu
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
           name: komainu-linux-x86_64
-          path: target/release/komainu
+          path: target/x86_64-unknown-linux-musl/release/komainu
           if-no-files-found: error
-
