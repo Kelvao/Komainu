@@ -13,6 +13,8 @@ use tracing::info;
 use uuid::Uuid;
 use webauthn_rs::prelude::{CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse};
 
+pub mod theme;
+
 use crate::application::auth_service::AuthService;
 use crate::application::container_service::ContainerService;
 use crate::application::system_service::SystemService;
@@ -201,72 +203,36 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         String::new()
     };
 
+    let head_tags = theme::render_head(
+        &i18n.login.page_title,
+        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+    );
+
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{page_title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {{
-        darkMode: 'class',
-        theme: {{
-          extend: {{
-            fontFamily: {{
-              display: ['"Space Grotesk"', 'sans-serif'],
-              sans: ['"Inter"', 'sans-serif'],
-              mono: ['"JetBrains Mono"', 'monospace'],
-            }}
-          }}
-        }}
-      }};
-    </script>
-    <style>
-      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
-      :root {{
-        --bg-canvas: #07090e;
-        --bg-surface: #0d121d;
-        --border-rule: rgba(255, 255, 255, 0.08);
-        --border-rule-hover: rgba(255, 255, 255, 0.16);
-      }}
-      body {{
-        background-color: var(--bg-canvas);
-        background-image: 
-          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 60%),
-          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 100% 100%, 24px 24px;
-      }}
-      a:focus-visible, button:focus-visible {{
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }}
-    </style>
-    <script>{webauthn_script}</script>
+    {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
+    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent"></div>
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
         <!-- Telemetry & Header -->
         <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
-            <div class="flex items-center gap-2 font-mono text-[11px] text-slate-400">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <div class="flex items-center gap-2 font-mono text-[11px] text-rose-400">
+                <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                 <span>SYS // AUTH_GATEWAY</span>
             </div>
-            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]" title="{lang_title}">
+            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                 <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                 <span>{lang_btn_label}</span>
             </a>
         </div>
 
         <div class="flex items-center gap-3.5 mb-6">
-            <div class="w-11 h-11 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-2xl text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)] shrink-0">
+            <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.25)] shrink-0">
                 狛
             </div>
             <div>
@@ -278,13 +244,13 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         {warning_box}
 
         <!-- Segmented Tab Switcher -->
-        <div class="grid grid-cols-2 gap-1 p-1 bg-[#07090e] rounded-lg border border-white/[0.08] mb-6">
-            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]">
-                <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+        <div class="grid grid-cols-2 gap-1 p-1 bg-[#090507] rounded-lg border border-white/[0.08] mb-6">
+            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
+                <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                 <span>{tab_local}</span>
             </button>
             <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
-                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
                 <span>{tab_qr}</span>
             </button>
         </div>
@@ -300,7 +266,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             <button 
                 id="login-btn"
                 onclick="startLogin()"
-                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
+                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
                 <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                 <span>{btn_text}</span>
             </button>
@@ -315,21 +281,21 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             <!-- QR Box with scanning brackets -->
             <div class="relative p-3 bg-white rounded-xl shadow-2xl border border-white/20 inline-block">
                 <div id="qr-container" class="w-[200px] h-[200px] flex items-center justify-center">
-                    <div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div class="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-                <div class="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-blue-500"></div>
-                <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-blue-500"></div>
-                <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-blue-500"></div>
-                <div class="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-blue-500"></div>
+                <div class="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-rose-500"></div>
+                <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-rose-500"></div>
+                <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-rose-500"></div>
+                <div class="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-rose-500"></div>
             </div>
 
             <!-- Live Status Bar -->
-            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-[#07090e] border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
+            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-[#090507] border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
                 <span id="qr-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span id="qr-status-text">{qr_waiting}</span>
             </div>
 
-            <button type="button" onclick="loadQrSession()" class="text-xs font-mono text-slate-400 hover:text-white transition flex items-center gap-1.5 py-1.5 px-3 rounded bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06]">
+            <button type="button" onclick="loadQrSession()" class="text-xs font-mono text-slate-400 hover:text-white transition flex items-center gap-1.5 py-1.5 px-3 rounded bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-rose-500/40">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 <span>{qr_reload}</span>
             </button>
@@ -354,13 +320,13 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         errDiv.classList.add('hidden');
 
         if (tab === 'local') {{
-            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]";
+            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
             btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
             viewLocal.classList.remove('hidden');
             viewQr.classList.add('hidden');
             stopQrPolling();
         }} else {{
-            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]";
+            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
             btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
             viewQr.classList.remove('hidden');
             viewLocal.classList.add('hidden');
@@ -377,7 +343,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         const qrContainer = document.getElementById('qr-container');
         const statusText = document.getElementById('qr-status-text');
         const statusDot = document.getElementById('qr-status-dot');
-        qrContainer.innerHTML = '<div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>';
+        qrContainer.innerHTML = '<div class="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>';
         statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
         statusText.innerText = '{qr_waiting}';
 
@@ -484,7 +450,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 </body>
 </html>"##,
         lang = i18n.lang,
-        page_title = i18n.login.page_title,
+        head_tags = head_tags,
         header_title = i18n.login.header_title,
         header_subtitle = i18n.login.header_subtitle,
         warning_box = warning_box,
@@ -508,7 +474,6 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         lang_btn_label = lang_btn_label,
         lang_title = lang_title,
         login_redirect = login_redirect,
-        webauthn_script = WEBAUTHN_JSON_SCRIPT,
     );
 
     Html(html).into_response()
@@ -688,31 +653,15 @@ async fn qr_login_page(
 
     let status = state.auth_service.get_qr_status(qr_id).await;
     if status == crate::application::auth_service::QrAuthStatus::Expired {
+        let head_tags = theme::render_head(&i18n.login.mobile_title, "");
         let html = format!(
             r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{page_title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      :root {{
-        --bg-canvas: #07090e;
-        --bg-surface: #0d121d;
-      }}
-      body {{
-        background-color: var(--bg-canvas);
-        background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 24px 24px;
-      }}
-    </style>
+    {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
+    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
         <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mx-auto mb-4">
             ⚠️
         </div>
@@ -724,7 +673,7 @@ async fn qr_login_page(
 </body>
 </html>"##,
             lang = i18n.lang,
-            page_title = i18n.login.mobile_title,
+            head_tags = head_tags,
             qr_expired = i18n.login.qr_expired,
         );
         return Html(html).into_response();
@@ -732,62 +681,26 @@ async fn qr_login_page(
 
     state.auth_service.mark_qr_scanned(qr_id).await;
 
+    let head_tags = theme::render_head(
+        &i18n.login.mobile_title,
+        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+    );
+
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>{page_title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {{
-        darkMode: 'class',
-        theme: {{
-          extend: {{
-            fontFamily: {{
-              display: ['"Space Grotesk"', 'sans-serif'],
-              sans: ['"Inter"', 'sans-serif'],
-              mono: ['"JetBrains Mono"', 'monospace'],
-            }}
-          }}
-        }}
-      }};
-    </script>
-    <style>
-      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
-      :root {{
-        --bg-canvas: #07090e;
-        --bg-surface: #0d121d;
-        --border-rule: rgba(255, 255, 255, 0.08);
-        --border-rule-hover: rgba(255, 255, 255, 0.16);
-      }}
-      body {{
-        background-color: var(--bg-canvas);
-        background-image: 
-          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 60%),
-          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 100% 100%, 24px 24px;
-      }}
-      a:focus-visible, button:focus-visible {{
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }}
-    </style>
-    <script>{webauthn_script}</script>
+    {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
+    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent"></div>
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
         <!-- Telemetry & Header -->
         <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
-            <div class="flex items-center gap-2 font-mono text-[11px] text-cyan-400">
-                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <div class="flex items-center gap-2 font-mono text-[11px] text-rose-400">
+                <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                 <span>SYS // MOBILE_SECURITY_KEY</span>
             </div>
             <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-slate-400 border border-white/[0.08]">FIDO2</span>
@@ -795,7 +708,7 @@ async fn qr_login_page(
 
         <div id="auth-box">
             <div class="flex items-center gap-3.5 mb-6">
-                <div class="w-11 h-11 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-2xl text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)] shrink-0">
+                <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.25)] shrink-0">
                     狛
                 </div>
                 <div>
@@ -804,8 +717,8 @@ async fn qr_login_page(
                 </div>
             </div>
 
-            <div class="p-3.5 rounded-lg bg-[#07090e] border border-white/[0.06] mb-6 text-xs font-mono text-slate-300 flex items-center gap-2.5">
-                <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <div class="p-3.5 rounded-lg bg-[#090507] border border-white/[0.06] mb-6 text-xs font-mono text-slate-300 flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 <span>Sessão de login pendente no computador</span>
             </div>
 
@@ -814,7 +727,7 @@ async fn qr_login_page(
             <button 
                 id="approve-btn"
                 onclick="startMobileApproval('{token}')"
-                class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
+                class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
                 <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 <span>{mobile_btn}</span>
             </button>
@@ -826,7 +739,7 @@ async fn qr_login_page(
             </div>
             <h2 class="text-lg font-display font-bold text-white mb-2">{mobile_success_title}</h2>
             <p class="text-xs text-slate-300 font-sans leading-relaxed mb-6">{mobile_success_desc}</p>
-            <div class="py-2 px-3 rounded-lg bg-[#07090e] border border-white/[0.06] text-[11px] font-mono text-emerald-400 inline-block">
+            <div class="py-2 px-3 rounded-lg bg-[#090507] border border-emerald-500/30 text-[11px] font-mono text-emerald-400 inline-block">
                 SESSÃO DESBLOQUEADA NO COMPUTADOR
             </div>
         </div>
@@ -891,7 +804,7 @@ async fn qr_login_page(
 </body>
 </html>"##,
         lang = i18n.lang,
-        page_title = i18n.login.mobile_title,
+        head_tags = head_tags,
         mobile_title = i18n.login.mobile_title,
         mobile_subtitle = i18n.login.mobile_subtitle,
         mobile_btn = i18n.login.mobile_btn,
@@ -903,7 +816,6 @@ async fn qr_login_page(
         default_error = i18n.login.default_error,
         base_path = state.base_path,
         token = token_str,
-        webauthn_script = WEBAUTHN_JSON_SCRIPT,
     );
 
     Html(html).into_response()
@@ -991,57 +903,21 @@ async fn register_page(
         return (StatusCode::FORBIDDEN, i18n.register.token_invalid.clone()).into_response();
     }
 
+    let head_tags = theme::render_head(
+        &i18n.register.page_title,
+        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+    );
+
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{page_title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {{
-        darkMode: 'class',
-        theme: {{
-          extend: {{
-            fontFamily: {{
-              display: ['"Space Grotesk"', 'sans-serif'],
-              sans: ['"Inter"', 'sans-serif'],
-              mono: ['"JetBrains Mono"', 'monospace'],
-            }}
-          }}
-        }}
-      }};
-    </script>
-    <style>
-      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
-      :root {{
-        --bg-canvas: #07090e;
-        --bg-surface: #0d121d;
-        --border-rule: rgba(255, 255, 255, 0.08);
-        --border-rule-hover: rgba(255, 255, 255, 0.16);
-      }}
-      body {{
-        background-color: var(--bg-canvas);
-        background-image: 
-          radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
-          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 100% 100%, 24px 24px;
-      }}
-      a:focus-visible, button:focus-visible {{
-        outline: 2px solid #10b981;
-        outline-offset: 2px;
-      }}
-    </style>
-    <script>{webauthn_script}</script>
+    {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
+    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent"></div>
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
         <div class="flex items-center gap-2 font-mono text-[11px] text-emerald-400 mb-6 pb-4 border-b border-white/[0.06]">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -1049,7 +925,7 @@ async fn register_page(
         </div>
 
         <div class="flex items-center gap-3.5 mb-6">
-            <div class="w-11 h-11 rounded-lg bg-emerald-600/10 border border-emerald-500/30 flex items-center justify-center font-display font-bold text-2xl text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)] shrink-0">
+            <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.25)] shrink-0">
                 狛
             </div>
             <div>
@@ -1128,7 +1004,7 @@ async fn register_page(
 </body>
 </html>"##,
         lang = i18n.lang,
-        page_title = i18n.register.page_title,
+        head_tags = head_tags,
         header_title = i18n.register.header_title,
         header_subtitle = i18n.register.header_subtitle,
         description = i18n.register.description,
@@ -1140,7 +1016,6 @@ async fn register_page(
         success_alert = i18n.register.success_alert,
         default_error = i18n.register.default_error,
         base_path = state.base_path,
-        webauthn_script = WEBAUTHN_JSON_SCRIPT,
     );
 
     Html(html).into_response()
@@ -1216,63 +1091,21 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     };
 
     let fragment = render_dashboard_fragment(&state, i18n, None).await;
+    let head_tags = theme::render_head(
+        &i18n.dashboard.page_title,
+        r#"<script src="https://unpkg.com/htmx.org@2.0.4"></script>"#,
+    );
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{page_title}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    <script>
-      tailwind.config = {{
-        darkMode: 'class',
-        theme: {{
-          extend: {{
-            fontFamily: {{
-              display: ['"Space Grotesk"', 'sans-serif'],
-              sans: ['"Inter"', 'sans-serif'],
-              mono: ['"JetBrains Mono"', 'monospace'],
-            }}
-          }}
-        }}
-      }};
-    </script>
-    <style>
-      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
-      :root {{
-        --bg-canvas: #07090e;
-        --bg-surface: #0d121d;
-        --border-rule: rgba(255, 255, 255, 0.08);
-        --border-rule-hover: rgba(255, 255, 255, 0.16);
-      }}
-      body {{
-        background-color: var(--bg-canvas);
-        background-image: 
-          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.06) 0%, transparent 60%),
-          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-        background-size: 100% 100%, 24px 24px;
-      }}
-      /* HTMX transition smoothing */
-      .htmx-swapping {{
-        opacity: 0.85;
-        transition: opacity 120ms ease-out;
-      }}
-      a:focus-visible, button:focus-visible {{
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }}
-    </style>
+    {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
-    <header class="border-b border-white/[0.08] bg-[#07090e]/85 backdrop-blur-md sticky top-0 z-50">
+<body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
+    <header class="border-b border-rose-500/15 bg-[#090507]/90 backdrop-blur-md sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-xl text-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.2)]">
+                <div class="w-9 h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-xl text-rose-400 shadow-[0_0_12px_rgba(244,63,94,0.25)]">
                     狛
                 </div>
                 <div>
@@ -1289,12 +1122,12 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
                     <span>{active_monitoring}</span>
                 </span>
 
-                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]" title="{lang_title}">
+                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                     <span>{lang_btn_label}</span>
                 </a>
 
-                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]">
+                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                     <span>{logout}</span>
                 </a>
@@ -1308,13 +1141,13 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         </div>
     </main>
 
-    <footer class="border-t border-white/[0.06] py-4 text-center text-xs font-mono text-slate-500">
+    <footer class="border-t border-rose-500/10 py-4 text-center text-xs font-mono text-slate-500">
         {footer}
     </footer>
 </body>
 </html>"##,
         lang = i18n.lang,
-        page_title = i18n.dashboard.page_title,
+        head_tags = head_tags,
         app_title = i18n.common.app_title,
         app_subtitle = i18n.common.app_subtitle,
         active_monitoring = i18n.common.active_monitoring,
@@ -1496,8 +1329,8 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     {error_banner}
 
     <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
-    <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
+    <div class="bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.06]">
             <div>
@@ -1508,7 +1341,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <p class="text-xs text-slate-400 mt-1 font-mono">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-[#07090e]/80 rounded-lg border border-white/[0.06]">
+            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-[#090507]/90 rounded-lg border border-white/[0.06]">
                 <button 
                     hx-post="{base_path}/api/container/start" 
                     hx-target="#dashboard-content" 
@@ -1558,33 +1391,33 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
         <!-- Consumo Exclusivo do Container -->
         <div class="mt-6 pt-5 border-t border-white/[0.06]">
             <div class="flex items-center gap-2 mb-3">
-                <span class="w-1.5 h-1.5 bg-cyan-400 rounded-sm"></span>
+                <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
                 <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{container_section}</h3>
                 <div class="flex-1 h-px bg-white/[0.04]"></div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- CPU Container -->
-                <div class="bg-[#07090e]/60 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-white/[0.12] transition-colors">
+                <div class="bg-[#090507]/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
                             <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
                         </div>
-                        <div class="w-full bg-[#0d121d] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="w-full bg-[#180d13] h-2 rounded-full overflow-hidden border border-white/[0.04]">
                             <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- RAM Container -->
-                <div class="bg-[#07090e]/60 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-white/[0.12] transition-colors">
+                <div class="bg-[#090507]/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
-                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/25">{container_ram_val}</span>
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
                         </div>
-                        <div class="w-full bg-[#0d121d] h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
+                        <div class="w-full bg-[#180d13] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                            <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
                         </div>
                     </div>
                 </div>
@@ -1595,37 +1428,37 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     <!-- SEÇÃO 2: CONSUMO GERAL DA MÁQUINA (HOST) -->
     <div class="space-y-3">
         <div class="flex items-center gap-2">
-            <span class="w-1.5 h-1.5 bg-slate-400 rounded-sm"></span>
+            <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
             <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{host_section}</h3>
             <div class="flex-1 h-px bg-white/[0.04]"></div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Métrica CPU Host -->
-            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
+            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/25">{cpu_usage:.1}%</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
                     </div>
-                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-blue-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(59,130,246,0.35)]" style="width: {cpu_usage:.1}%"></div>
+                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.35)]" style="width: {cpu_usage:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-slate-300 font-semibold">{cpu_usage:.1}%</span>
+                    <span class="text-rose-400 font-semibold">{cpu_usage:.1}%</span>
                 </div>
             </div>
 
             <!-- Métrica RAM Host -->
-            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
+            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
                     </div>
-                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-purple-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(168,85,247,0.35)]" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
@@ -1636,13 +1469,13 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
 
             <!-- Métrica Disco Host -->
-            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
+            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
                     </div>
-                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-emerald-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.35)]" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>
