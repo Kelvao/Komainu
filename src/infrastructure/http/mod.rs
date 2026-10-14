@@ -21,6 +21,7 @@ use crate::domain::container::ContainerState;
 use axum::extract::FromRef;
 
 const SESSION_COOKIE: &str = "komainu_session";
+const LANG_COOKIE: &str = "komainu_lang";
 const SESSION_DURATION_SECS: u64 = 7 * 24 * 3600; // 7 days
 
 const WEBAUTHN_JSON_SCRIPT: &str = r#"!function(){"use strict";var e={};function t(e){const t="==".slice(0,(4-e.length%4)%4),n=e.replace(/-/g,"+").replace(/_/g,"/")+t,r=atob(n),c=new ArrayBuffer(r.length),o=new Uint8Array(c);for(let e=0;e<r.length;e++)o[e]=r.charCodeAt(e);return c}function n(e){const t=new Uint8Array(e);let n="";for(const e of t)n+=String.fromCharCode(e);return btoa(n).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"")}function r(e,t,n){if("copy"===t)return n;if("convert"===t)return e(n);if(t instanceof Array)return n.map((n=>r(e,t[0],n)));if(t instanceof Object){const c={};for(const[o,i]of Object.entries(t))if(o in n)null!=n[o]?c[o]=r(e,i.schema,n[o]):c[o]=null;else if(i.required)throw new Error("Missing key: "+o);return c}}function c(e){return{required:!0,schema:e}}function o(e){return{required:!1,schema:e}}const i={type:c("copy"),id:c("convert"),transports:o("copy")},a={appid:o("copy"),appidExclude:o("copy"),credProps:o("copy")},s={appid:o("copy"),appidExclude:o("copy"),credProps:o("copy")},l={publicKey:c({rp:c("copy"),user:c({id:c("convert"),name:c("copy"),displayName:c("copy")}),challenge:c("convert"),pubKeyCredParams:c("copy"),timeout:o("copy"),excludeCredentials:o([i]),authenticatorSelection:o("copy"),attestation:o("copy"),extensions:o(a)}),signal:o("copy")},p={type:c("copy"),id:c("copy"),rawId:c("convert"),response:c({clientDataJSON:c("convert"),attestationObject:c("convert")}),clientExtensionResults:c(s)},u={mediation:o("copy"),publicKey:c({challenge:c("convert"),timeout:o("copy"),rpId:o("copy"),allowCredentials:o([i]),userVerification:o("copy"),extensions:o(a)}),signal:o("copy")},y={type:c("copy"),id:c("copy"),rawId:c("convert"),response:c({clientDataJSON:c("convert"),authenticatorData:c("convert"),signature:c("convert"),userHandle:c("convert")}),clientExtensionResults:c(s)},d={credentialCreationOptions:l,publicKeyCredentialWithAttestation:p,credentialRequestOptions:u,publicKeyCredentialWithAssertion:y};e.get=async function(e){return function(e){const t=e;return t.clientExtensionResults=e.getClientExtensionResults(),r(n,y,t)}(await navigator.credentials.get(function(e){return r(t,u,e)}(e)))},e.create=async function(e){return function(e){const t=e;return t.clientExtensionResults=e.getClientExtensionResults(),r(n,p,t)}(await navigator.credentials.create(function(e){return r(t,l,e)}(e)))},e.supported=function(){return!!(navigator.credentials&&navigator.credentials.create&&navigator.credentials.get&&window.PublicKeyCredential)},e.schema=d,globalThis.webauthnJSON=e;}();"#;
@@ -52,6 +53,7 @@ pub fn create_router(state: AppState) -> Router {
     let app = Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
+        .route("/set-lang", get(set_lang_handler))
         .route("/login", get(login_page))
         .route("/logout", post(logout_handler).get(logout_handler))
         .route("/api/auth/login_start", get(login_start_handler))
@@ -97,6 +99,58 @@ fn is_authenticated(jar: &SignedCookieJar) -> bool {
     false
 }
 
+#[derive(Deserialize)]
+struct SetLangQuery {
+    lang: Option<String>,
+    redirect: Option<String>,
+}
+
+async fn set_lang_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<SetLangQuery>,
+) -> (SignedCookieJar, Response) {
+    let target = query.lang.unwrap_or_default();
+    let normalized = match target.to_lowercase().as_str() {
+        "en" | "en-us" => "en",
+        _ => "pt-BR",
+    };
+    let mut cookie = Cookie::new(LANG_COOKIE, normalized);
+    cookie.set_path("/");
+    cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+    cookie.set_max_age(time::Duration::days(365));
+
+    let redirect_url = query.redirect.filter(|r| r.starts_with('/')).unwrap_or_else(|| {
+        if state.base_path.is_empty() {
+            "/".to_string()
+        } else {
+            format!("{}/", state.base_path)
+        }
+    });
+
+    (jar.add(cookie), Redirect::to(&redirect_url).into_response())
+}
+
+fn resolve_i18n(jar: &SignedCookieJar, state: &AppState) -> std::sync::Arc<crate::i18n::Translations> {
+    if let Some(cookie) = jar.get(LANG_COOKIE) {
+        let val = cookie.value();
+        if val == "en" {
+            if state.i18n.lang == "en" {
+                return state.i18n.clone();
+            } else {
+                return std::sync::Arc::new(crate::i18n::I18n::load("en"));
+            }
+        } else if val == "pt" || val == "pt-BR" || val == "pt_BR" {
+            if state.i18n.lang == "pt-BR" {
+                return state.i18n.clone();
+            } else {
+                return std::sync::Arc::new(crate::i18n::I18n::load("pt-BR"));
+            }
+        }
+    }
+    state.i18n.clone()
+}
+
 async fn health_check() -> &'static str {
     "OK"
 }
@@ -116,7 +170,19 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         return Redirect::to(&target_root).into_response();
     }
 
-    let i18n = &state.i18n;
+    let i18n_arc = resolve_i18n(&jar, &state);
+    let i18n = &*i18n_arc;
+    let (next_lang, lang_btn_label, lang_title) = if i18n.lang == "en" {
+        ("pt-BR", "PT", "Mudar para Português")
+    } else {
+        ("en", "EN", "Switch to English")
+    };
+    let login_redirect = if state.base_path.is_empty() {
+        "/login".to_string()
+    } else {
+        format!("{}/login", state.base_path)
+    };
+
     let has_admin = state.auth_service.has_admin().await;
     let warning_box = if !has_admin {
         format!(
@@ -141,14 +207,20 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
     <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-        <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-2xl shadow-lg shadow-blue-500/20">
-                狛
+        <div class="flex items-center justify-between gap-3 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-2xl shadow-lg shadow-blue-500/20">
+                    狛
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
+                    <p class="text-xs text-slate-400">{header_subtitle}</p>
+                </div>
             </div>
-            <div>
-                <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
-                <p class="text-xs text-slate-400">{header_subtitle}</p>
-            </div>
+            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700/60 shadow-sm" title="{lang_title}">
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
+                <span>{lang_btn_label}</span>
+            </a>
         </div>
 
         {warning_box}
@@ -227,6 +299,10 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         default_error = i18n.login.default_error,
         base_path = state.base_path,
         target_root = target_root,
+        next_lang = next_lang,
+        lang_btn_label = lang_btn_label,
+        lang_title = lang_title,
+        login_redirect = login_redirect,
         webauthn_script = WEBAUTHN_JSON_SCRIPT,
     );
 
@@ -477,8 +553,15 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         return Redirect::to(&login_url).into_response();
     }
 
-    let i18n = &state.i18n;
-    let fragment = render_dashboard_fragment(&state, None).await;
+    let i18n_arc = resolve_i18n(&jar, &state);
+    let i18n = &*i18n_arc;
+    let (next_lang, lang_btn_label, lang_title) = if i18n.lang == "en" {
+        ("pt-BR", "PT", "Mudar para Português")
+    } else {
+        ("en", "EN", "Switch to English")
+    };
+
+    let fragment = render_dashboard_fragment(&state, i18n, None).await;
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" class="dark">
@@ -518,6 +601,12 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                     {active_monitoring}
                 </span>
+
+                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700/60 shadow-sm" title="{lang_title}">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
+                    <span>{lang_btn_label}</span>
+                </a>
+
                 <a href="{base_path}/logout" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
                     {logout}
                 </a>
@@ -541,6 +630,9 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         app_title = i18n.common.app_title,
         app_subtitle = i18n.common.app_subtitle,
         active_monitoring = i18n.common.active_monitoring,
+        next_lang = next_lang,
+        lang_btn_label = lang_btn_label,
+        lang_title = lang_title,
         logout = i18n.common.logout,
         fragment = fragment,
         footer = i18n.common.footer,
@@ -550,57 +642,62 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 }
 
 async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
         let mut headers = HeaderMap::new();
         let login_url = format!("{}/login", state.base_path);
         headers.insert("HX-Redirect", login_url.parse().unwrap());
-        return (StatusCode::UNAUTHORIZED, headers, state.i18n.common.session_expired.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
     }
-    Html(render_dashboard_fragment(&state, None).await).into_response()
+    Html(render_dashboard_fragment(&state, &i18n, None).await).into_response()
 }
 
 async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.start().await.err().map(|e| e.to_localized(&state.i18n));
-    Html(render_dashboard_fragment(&state, err).await).into_response()
+    let err = state.container_service.start().await.err().map(|e| e.to_localized(&i18n));
+    Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
 async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.stop().await.err().map(|e| e.to_localized(&state.i18n));
-    Html(render_dashboard_fragment(&state, err).await).into_response()
+    let err = state.container_service.stop().await.err().map(|e| e.to_localized(&i18n));
+    Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
 async fn container_restart_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.restart().await.err().map(|e| e.to_localized(&state.i18n));
-    Html(render_dashboard_fragment(&state, err).await).into_response()
+    let err = state.container_service.restart().await.err().map(|e| e.to_localized(&i18n));
+    Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
 async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.update_image().await.err().map(|e| e.to_localized(&state.i18n));
-    Html(render_dashboard_fragment(&state, err).await).into_response()
+    let err = state.container_service.update_image().await.err().map(|e| e.to_localized(&i18n));
+    Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
 async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.rebuild().await.err().map(|e| e.to_localized(&state.i18n));
-    Html(render_dashboard_fragment(&state, err).await).into_response()
+    let err = state.container_service.rebuild().await.err().map(|e| e.to_localized(&i18n));
+    Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
-async fn render_dashboard_fragment(state: &AppState, action_error: Option<String>) -> String {
-    let i18n = &state.i18n;
+async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Translations, action_error: Option<String>) -> String {
     let status_res = state.container_service.status().await;
     let metrics = state.system_service.get_metrics().await;
 
@@ -1017,7 +1114,7 @@ mod tests {
             base_path: String::new(),
         };
 
-        let fragment = render_dashboard_fragment(&state, None).await;
+        let fragment = render_dashboard_fragment(&state, &state.i18n, None).await;
         assert!(fragment.contains("Instância Vaultwarden"));
         assert!(fragment.contains("Consumo do Container"));
         assert!(fragment.contains("Consumo Geral da Máquina (Host)"));
@@ -1029,7 +1126,7 @@ mod tests {
         assert!(fragment.contains("vaultwarden:test"));
         assert!(fragment.contains("hx-post=\"/api/container/start\""));
 
-        let fragment_err = render_dashboard_fragment(&state, Some("Falha ao iniciar".to_string())).await;
+        let fragment_err = render_dashboard_fragment(&state, &state.i18n, Some("Falha ao iniciar".to_string())).await;
         assert!(fragment_err.contains("Falha na operação:"));
         assert!(fragment_err.contains("Falha ao iniciar"));
 
@@ -1042,7 +1139,7 @@ mod tests {
             i18n: i18n.clone(),
             base_path: "/komainu".to_string(),
         };
-        let subpath_fragment = render_dashboard_fragment(&subpath_state, None).await;
+        let subpath_fragment = render_dashboard_fragment(&subpath_state, &subpath_state.i18n, None).await;
         assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/start\""));
         assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/stop\""));
 
@@ -1055,7 +1152,7 @@ mod tests {
             i18n: Arc::new(crate::i18n::I18n::load("en")),
             base_path: String::new(),
         };
-        let en_fragment = render_dashboard_fragment(&en_state, None).await;
+        let en_fragment = render_dashboard_fragment(&en_state, &en_state.i18n, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
         assert!(en_fragment.contains("Container Resource Usage"));
         assert!(en_fragment.contains("Host Machine Resource Usage"));
@@ -1064,6 +1161,49 @@ mod tests {
         assert!(en_fragment.contains("CPU Usage"));
         assert!(en_fragment.contains("RAM Memory"));
         assert!(en_fragment.contains("Storage"));
+    }
+
+    #[tokio::test]
+    async fn test_set_language_handler() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key,
+            i18n,
+            base_path: String::new(),
+        };
+
+        let router = create_router(state);
+
+        // Switch to English
+        let req = Request::builder()
+            .uri("/set-lang?lang=en")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        let set_cookie = res.headers().get("set-cookie").unwrap().to_str().unwrap();
+        assert!(set_cookie.contains("komainu_lang="));
+
+        // Switch back to Portuguese
+        let req_pt = Request::builder()
+            .uri("/set-lang?lang=pt-BR")
+            .body(Body::empty())
+            .unwrap();
+        let res_pt = router.oneshot(req_pt).await.unwrap();
+        assert_eq!(res_pt.status(), StatusCode::SEE_OTHER);
+        let set_cookie_pt = res_pt.headers().get("set-cookie").unwrap().to_str().unwrap();
+        assert!(set_cookie_pt.contains("komainu_lang="));
     }
 
     #[tokio::test]
