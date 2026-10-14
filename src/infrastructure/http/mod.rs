@@ -790,9 +790,12 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
     )
 }
 
-pub async fn run_server(port: u16, state: AppState) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_server(host: &str, port: u16, state: AppState) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(state);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr_str = format!("{host}:{port}");
+    let addr: SocketAddr = addr_str
+        .parse()
+        .map_err(|e| format!("Invalid bind address '{addr_str}': {e}"))?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!("Komainu rodando em http://{}", addr);
     axum::serve(listener, app).await?;

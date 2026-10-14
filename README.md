@@ -98,6 +98,7 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |---|---|---|
+| `SERVER_HOST` | `127.0.0.1` | Network interface to bind HTTP listener to (`127.0.0.1` for local proxy, `0.0.0.0` for Docker). |
 | `SERVER_PORT` | `3000` | Port on which Komainu's HTTP server listens. |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | Path to the local Docker Unix socket. |
 | `SESSION_SECRET` | *(Random 32+ bytes)* | High-entropy secret used for encrypting signed session cookies. |
@@ -111,6 +112,7 @@ cp .env.example .env
 ### `.env.example`
 
 ```dotenv
+SERVER_HOST=127.0.0.1
 SERVER_PORT=3000
 DOCKER_SOCKET=/var/run/docker.sock
 SESSION_SECRET=generate_a_random_secret_with_at_least_32_bytes

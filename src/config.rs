@@ -2,6 +2,7 @@ use std::env;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub server_host: String,
     pub server_port: u16,
     pub docker_socket: String,
     pub session_secret: String,
@@ -16,6 +17,8 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let _ = dotenvy::dotenv();
+
+        let server_host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
 
         let server_port = env::var("SERVER_PORT")
             .unwrap_or_else(|_| "3000".to_string())
@@ -63,6 +66,7 @@ impl Config {
         };
 
         Ok(Self {
+            server_host,
             server_port,
             docker_socket,
             session_secret,
@@ -85,6 +89,7 @@ mod tests {
         let config = Config::from_env();
         assert!(config.is_ok());
         let c = config.unwrap();
+        assert_eq!(c.server_host, "127.0.0.1");
         assert_eq!(c.server_port, 3000);
         assert_eq!(c.rp_id, "localhost");
         assert_eq!(c.app_lang, "pt-BR");

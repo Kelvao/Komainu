@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", i18n.cli.reg_ctrl_c);
         println!("========================================================\n");
 
-        run_server(config.server_port, state).await?;
+        run_server(&config.server_host, config.server_port, state).await?;
         return Ok(());
     }
 
@@ -92,10 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     info!(
-        "Iniciando Komainu para o container '{}' na porta {}",
-        config.vw_container_name, config.server_port
+        "Iniciando Komainu para o container '{}' em {}:{}",
+        config.vw_container_name, config.server_host, config.server_port
     );
-    run_server(config.server_port, state).await?;
+    run_server(&config.server_host, config.server_port, state).await?;
 
     Ok(())
 }
