@@ -105,7 +105,22 @@ cp .env.example .env
 | `RP_ID` | `localhost` | WebAuthn Relying Party ID (your domain name, e.g., `komainu.example.com`). |
 | `RP_ORIGIN` | `http://localhost:3000` | WebAuthn Relying Party Origin (e.g., `https://komainu.example.com`). |
 | `CREDENTIALS_PATH` | `credentials.json` | File path where the admin passkey credential is saved. |
-| `APP_LANG` | `pt-BR` | Interface & CLI language (`pt-BR`, `en`). |
+| `APP_LANG` | `en` | Interface & CLI language (`en`, `pt-BR`). |
+| `BASE_PATH` | `""` | Optional subpath prefix when Komainu is mounted under a reverse proxy route (e.g., `/komainu`). |
+
+### `.env.example`
+
+```dotenv
+SERVER_PORT=3000
+DOCKER_SOCKET=/var/run/docker.sock
+SESSION_SECRET=generate_a_random_secret_with_at_least_32_bytes
+VW_CONTAINER_NAME=vaultwarden
+RP_ID=localhost
+RP_ORIGIN=http://localhost:3000
+CREDENTIALS_PATH=credentials.json
+APP_LANG=en # Options: en, pt-BR
+BASE_PATH= # Optional: subpath when using reverse proxy (e.g., /komainu)
+```
 
 > [!IMPORTANT]
 > Always generate a secure `SESSION_SECRET` with at least 32 bytes of entropy:
@@ -230,9 +245,29 @@ sudo systemctl enable --now komainu
 ```
 
 ### Caddy Reverse Proxy (`Caddyfile`)
+
+**Option A: Dedicated subdomain**
 ```caddy
 komainu.yourdomain.com {
     reverse_proxy 127.0.0.1:3000
+}
+```
+
+**Option B: Subpath on existing Vaultwarden domain (`BASE_PATH=/komainu`)**
+```caddy
+vaultwarden.yourdomain.com {
+    redir /komainu /komainu/
+
+    handle /komainu/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8080 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
 }
 ```
 

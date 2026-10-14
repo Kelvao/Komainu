@@ -1101,6 +1101,7 @@ dependencies = [
  "sha2",
  "sysinfo",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "uuid",

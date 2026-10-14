@@ -29,6 +29,7 @@ pub struct AppState {
     pub auth_service: Arc<AuthService>,
     pub cookie_key: Key,
     pub i18n: Arc<crate::i18n::Translations>,
+    pub base_path: String,
 }
 
 impl FromRef<AppState> for Key {
@@ -44,7 +45,8 @@ pub fn derive_cookie_key(secret: &str) -> Key {
 }
 
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    let base_path = state.base_path.clone();
+    let app = Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
         .route("/login", get(login_page))
@@ -62,7 +64,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/restart", post(container_restart_handler))
         .route("/api/container/update", post(container_update_handler))
         .route("/api/container/rebuild", post(container_rebuild_handler))
-        .with_state(state)
+        .with_state(state);
+
+    if !base_path.is_empty() {
+        Router::new().nest(&base_path, app.clone()).merge(app)
+    } else {
+        app
+    }
 }
 
 fn is_authenticated(jar: &SignedCookieJar) -> bool {
@@ -80,8 +88,14 @@ async fn health_check() -> &'static str {
 // ==========================================
 
 async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let target_root = if state.base_path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("{}/", state.base_path)
+    };
+
     if is_authenticated(&jar) {
-        return Redirect::to("/").into_response();
+        return Redirect::to(&target_root).into_response();
     }
 
     let i18n = &state.i18n;
@@ -145,7 +159,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         btn.innerText = '{waiting_passkey}';
 
         try {{
-            const startRes = await fetch('/api/auth/login_start');
+            const startRes = await fetch('{base_path}/api/auth/login_start');
             if (!startRes.ok) {{
                 const err = await startRes.text();
                 throw new Error(err || '{start_error}');
@@ -153,7 +167,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             const data = await startRes.json();
             const credential = await webauthnJSON.get({{ publicKey: data.challenge }});
 
-            const finishRes = await fetch('/api/auth/login_finish', {{
+            const finishRes = await fetch('{base_path}/api/auth/login_finish', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ auth_id: data.auth_id, credential }})
@@ -164,7 +178,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                 throw new Error(err || '{auth_error}');
             }}
 
-            window.location.href = '/';
+            window.location.href = '{target_root}';
         }} catch (err) {{
             console.error(err);
             errDiv.innerText = err.message || '{default_error}';
@@ -187,6 +201,8 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         start_error = i18n.login.start_error,
         auth_error = i18n.login.auth_error,
         default_error = i18n.login.default_error,
+        base_path = state.base_path,
+        target_root = target_root,
     );
 
     Html(html).into_response()
@@ -234,9 +250,12 @@ async fn login_finish_handler(
     }
 }
 
-async fn logout_handler(jar: SignedCookieJar) -> Response {
-    let jar = jar.remove(Cookie::from(SESSION_COOKIE));
-    (jar, Redirect::to("/login")).into_response()
+async fn logout_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    let mut remove_cookie = Cookie::new(SESSION_COOKIE, "");
+    remove_cookie.set_path("/");
+    let jar = jar.remove(remove_cookie);
+    let target = format!("{}/login", state.base_path);
+    (jar, Redirect::to(&target)).into_response()
 }
 
 // ==========================================
@@ -308,7 +327,7 @@ async fn register_page(
         btn.innerText = '{creating_credential}';
 
         try {{
-            const startRes = await fetch(`/api/auth/register_start?token=${{encodeURIComponent(token)}}`);
+            const startRes = await fetch(`{base_path}/api/auth/register_start?token=${{encodeURIComponent(token)}}`);
             if (!startRes.ok) {{
                 const err = await startRes.text();
                 throw new Error(err || '{start_error}');
@@ -316,7 +335,7 @@ async fn register_page(
             const data = await startRes.json();
             const credential = await webauthnJSON.create({{ publicKey: data.challenge }});
 
-            const finishRes = await fetch(`/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
+            const finishRes = await fetch(`{base_path}/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ reg_id: data.reg_id, credential }})
@@ -328,7 +347,7 @@ async fn register_page(
             }}
 
             alert('{success_alert}');
-            window.location.href = '/login';
+            window.location.href = '{base_path}/login';
         }} catch (err) {{
             console.error(err);
             errDiv.innerText = err.message || '{default_error}';
@@ -352,6 +371,7 @@ async fn register_page(
         save_error = i18n.register.save_error,
         success_alert = i18n.register.success_alert,
         default_error = i18n.register.default_error,
+        base_path = state.base_path,
     );
 
     Html(html).into_response()
@@ -414,7 +434,8 @@ async fn register_finish_handler(
 
 async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return Redirect::to("/login").into_response();
+        let login_url = format!("{}/login", state.base_path);
+        return Redirect::to(&login_url).into_response();
     }
 
     let i18n = &state.i18n;
@@ -458,7 +479,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                     {active_monitoring}
                 </span>
-                <a href="/logout" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
+                <a href="{base_path}/logout" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
                     {logout}
                 </a>
             </div>
@@ -466,7 +487,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     </header>
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
-        <div id="dashboard-content" hx-get="/api/dashboard-fragment" hx-trigger="every 5s" hx-swap="innerHTML">
+        <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 5s" hx-swap="innerHTML">
             {fragment}
         </div>
     </main>
@@ -484,6 +505,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         logout = i18n.common.logout,
         fragment = fragment,
         footer = i18n.common.footer,
+        base_path = state.base_path,
     );
     Html(html).into_response()
 }
@@ -491,7 +513,8 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         let mut headers = HeaderMap::new();
-        headers.insert("HX-Redirect", "/login".parse().unwrap());
+        let login_url = format!("{}/login", state.base_path);
+        headers.insert("HX-Redirect", login_url.parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, state.i18n.common.session_expired.clone()).into_response();
     }
     Html(render_dashboard_fragment(&state, None).await).into_response()
@@ -636,7 +659,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
             
             <div class="flex flex-wrap items-center gap-2">
                 <button 
-                    hx-post="/api/container/start" 
+                    hx-post="{base_path}/api/container/start" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
@@ -645,7 +668,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {btn_start}
                 </button>
                 <button 
-                    hx-post="/api/container/stop" 
+                    hx-post="{base_path}/api/container/stop" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
@@ -654,7 +677,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {btn_stop}
                 </button>
                 <button 
-                    hx-post="/api/container/restart" 
+                    hx-post="{base_path}/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white">
@@ -662,7 +685,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {btn_restart}
                 </button>
                 <button 
-                    hx-post="/api/container/update" 
+                    hx-post="{base_path}/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white">
@@ -670,7 +693,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {btn_update}
                 </button>
                 <button 
-                    hx-post="/api/container/rebuild" 
+                    hx-post="{base_path}/api/container/rebuild" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
@@ -733,6 +756,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         </div>
     </div>
 </div>"##,
+        base_path = &state.base_path,
         error_banner = error_banner,
         instance_title = i18n.dashboard.instance_title,
         status_badge = status_badge,
@@ -861,6 +885,7 @@ mod tests {
             auth_service: auth_service.clone(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
+            base_path: String::new(),
         };
 
         let fragment = render_dashboard_fragment(&state, None).await;
@@ -869,10 +894,24 @@ mod tests {
         assert!(fragment.contains("Memória RAM"));
         assert!(fragment.contains("Armazenamento"));
         assert!(fragment.contains("vaultwarden:test"));
+        assert!(fragment.contains("hx-post=\"/api/container/start\""));
 
         let fragment_err = render_dashboard_fragment(&state, Some("Falha ao iniciar".to_string())).await;
         assert!(fragment_err.contains("Falha na operação:"));
         assert!(fragment_err.contains("Falha ao iniciar"));
+
+        // Test base_path prefixing
+        let subpath_state = AppState {
+            container_service: container_service.clone(),
+            system_service: system_service.clone(),
+            auth_service: auth_service.clone(),
+            cookie_key: cookie_key.clone(),
+            i18n: i18n.clone(),
+            base_path: "/komainu".to_string(),
+        };
+        let subpath_fragment = render_dashboard_fragment(&subpath_state, None).await;
+        assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/start\""));
+        assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/stop\""));
 
         // Test English fragment
         let en_state = AppState {
@@ -881,11 +920,51 @@ mod tests {
             auth_service,
             cookie_key,
             i18n: Arc::new(crate::i18n::I18n::load("en")),
+            base_path: String::new(),
         };
         let en_fragment = render_dashboard_fragment(&en_state, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
         assert!(en_fragment.contains("CPU Usage"));
         assert!(en_fragment.contains("RAM Memory"));
         assert!(en_fragment.contains("Storage"));
+    }
+
+    #[tokio::test]
+    async fn test_nested_base_path_routing() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("en"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key,
+            i18n,
+            base_path: "/komainu".to_string(),
+        };
+
+        let router = create_router(state);
+
+        // 1. Nested path /komainu/health
+        let req_nested = Request::builder()
+            .uri("/komainu/health")
+            .body(Body::empty())
+            .unwrap();
+        let res_nested = router.clone().oneshot(req_nested).await.unwrap();
+        assert_eq!(res_nested.status(), StatusCode::OK);
+
+        // 2. Direct root path /health (when reverse proxy strips prefix)
+        let req_root = Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let res_root = router.oneshot(req_root).await.unwrap();
+        assert_eq!(res_root.status(), StatusCode::OK);
     }
 }

@@ -10,6 +10,7 @@ pub struct Config {
     pub rp_origin: String,
     pub credentials_path: String,
     pub app_lang: String,
+    pub base_path: String,
 }
 
 impl Config {
@@ -42,13 +43,24 @@ impl Config {
 
         let rp_id = env::var("RP_ID").unwrap_or_else(|_| "localhost".to_string());
 
-        let rp_origin = env::var("RP_ORIGIN")
+        let rp_origin_raw = env::var("RP_ORIGIN")
             .unwrap_or_else(|_| format!("http://localhost:{server_port}"));
+        let rp_origin = rp_origin_raw.trim().trim_end_matches('/').to_string();
 
         let credentials_path = env::var("CREDENTIALS_PATH")
             .unwrap_or_else(|_| "credentials.json".to_string());
 
         let app_lang = env::var("APP_LANG").unwrap_or_else(|_| "pt-BR".to_string());
+
+        let base_path_raw = env::var("BASE_PATH").unwrap_or_default();
+        let base_path = {
+            let trimmed = base_path_raw.trim().trim_matches('/');
+            if trimmed.is_empty() {
+                String::new()
+            } else {
+                format!("/{}", trimmed)
+            }
+        };
 
         Ok(Self {
             server_port,
@@ -59,6 +71,7 @@ impl Config {
             rp_origin,
             credentials_path,
             app_lang,
+            base_path,
         })
     }
 }
@@ -75,5 +88,6 @@ mod tests {
         assert_eq!(c.server_port, 3000);
         assert_eq!(c.rp_id, "localhost");
         assert_eq!(c.app_lang, "pt-BR");
+        assert_eq!(c.base_path, "");
     }
 }
