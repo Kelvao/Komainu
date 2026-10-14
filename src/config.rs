@@ -9,6 +9,7 @@ pub struct Config {
     pub rp_id: String,
     pub rp_origin: String,
     pub credentials_path: String,
+    pub app_lang: String,
 }
 
 impl Config {
@@ -47,6 +48,8 @@ impl Config {
         let credentials_path = env::var("CREDENTIALS_PATH")
             .unwrap_or_else(|_| "credentials.json".to_string());
 
+        let app_lang = env::var("APP_LANG").unwrap_or_else(|_| "pt-BR".to_string());
+
         Ok(Self {
             server_port,
             docker_socket,
@@ -55,6 +58,7 @@ impl Config {
             rp_id,
             rp_origin,
             credentials_path,
+            app_lang,
         })
     }
 }
@@ -70,5 +74,6 @@ mod tests {
         let c = config.unwrap();
         assert_eq!(c.server_port, 3000);
         assert_eq!(c.rp_id, "localhost");
+        assert_eq!(c.app_lang, "pt-BR");
     }
 }

@@ -39,23 +39,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let system_service = Arc::new(SystemService::new(Arc::new(system_adapter)));
 
     let cookie_key = komainu::infrastructure::http::derive_cookie_key(&config.session_secret);
+    let i18n = Arc::new(komainu::i18n::I18n::load(&config.app_lang));
 
     let state = AppState {
         container_service,
         system_service,
         auth_service: auth_service.clone(),
         cookie_key,
+        i18n: i18n.clone(),
     };
 
     if args.register {
         if auth_service.has_admin().await && !args.force {
             eprintln!("\n========================================================");
-            eprintln!("        KOMAINU - REGISTRO BLOQUEADO                   ");
+            eprintln!("        {}", i18n.cli.reg_blocked_title);
             eprintln!("========================================================");
-            eprintln!("Já existe uma Passkey de administrador cadastrada!");
-            eprintln!("O Komainu é restrito a um único administrador.");
-            eprintln!("Para substituir a Passkey existente, execute com --force:");
-            eprintln!("  ./komainu --register --force\n");
+            eprintln!("{}", i18n.cli.reg_blocked_admin_exists);
+            eprintln!("{}", i18n.cli.reg_blocked_single_admin);
+            eprintln!("{}", i18n.cli.reg_blocked_force_hint);
             eprintln!("========================================================\n");
             return Ok(());
         }
@@ -66,18 +67,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let reg_url = format!("{}/register?token={}", config.rp_origin, token);
 
         println!("\n========================================================");
-        println!("           KOMAINU - REGISTRO DE PASSKEY                ");
+        println!("           {}", i18n.cli.reg_title);
         println!("========================================================");
-        println!("Escaneie o QR Code com seu dispositivo móvel ou acesse o link:\n");
+        println!("{}", i18n.cli.reg_scan_prompt);
 
         if let Ok(code) = qrcode::QrCode::new(reg_url.as_bytes()) {
             let qr_string = code.render::<qrcode::render::unicode::Dense1x2>().build();
             println!("{qr_string}\n");
         }
 
-        println!("Link direto:\n{reg_url}\n");
-        println!("Este link é de uso único. Após o cadastro, a rota será fechada.");
-        println!("Pressione Ctrl+C para encerrar após o cadastro.");
+        println!("{}\n{reg_url}\n", i18n.cli.reg_direct_link);
+        println!("{}", i18n.cli.reg_single_use);
+        println!("{}", i18n.cli.reg_ctrl_c);
         println!("========================================================\n");
 
         run_server(config.server_port, state).await?;
@@ -85,8 +86,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !auth_service.has_admin().await {
-        println!("\n[AVISO] Nenhum administrador cadastrado!");
-        println!("Execute './komainu --register' via terminal/SSH para cadastrar sua Passkey com segurança.\n");
+        println!("\n{}", i18n.cli.warn_no_admin_title);
+        println!("{}\n", i18n.cli.warn_no_admin_help);
     }
 
     info!(

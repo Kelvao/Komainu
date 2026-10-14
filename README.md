@@ -56,6 +56,9 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 Komainu is engineered following **Hexagonal Architecture (Ports and Adapters)** and **SOLID principles**:
 
 ```
+locales/                # Language definition files (JSON)
+├── en.json             # English translations
+└── pt-BR.json          # Portuguese (Brazil) translations
 src/
 ├── domain/             # Core business models & traits (zero external deps)
 │   ├── auth.rs         # Authentication credentials & passkey types
@@ -72,6 +75,7 @@ src/
 │   └── system.rs       # Sysinfo adapter with non-blocking disk inspection
 ├── cli.rs              # Command-line interface definitions (Clap)
 ├── config.rs           # Environment variable validation & security alerts
+├── i18n.rs             # Internationalization loader & strongly-typed translations
 └── main.rs             # Composition root & dependency injection
 ```
 
@@ -101,6 +105,7 @@ cp .env.example .env
 | `RP_ID` | `localhost` | WebAuthn Relying Party ID (your domain name, e.g., `komainu.example.com`). |
 | `RP_ORIGIN` | `http://localhost:3000` | WebAuthn Relying Party Origin (e.g., `https://komainu.example.com`). |
 | `CREDENTIALS_PATH` | `credentials.json` | File path where the admin passkey credential is saved. |
+| `APP_LANG` | `pt-BR` | Interface & CLI language (`pt-BR`, `en`). |
 
 > [!IMPORTANT]
 > Always generate a secure `SESSION_SECRET` with at least 32 bytes of entropy:

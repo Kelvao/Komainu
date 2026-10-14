@@ -1,0 +1,80 @@
+{
+  "lang": "en",
+  "common": {
+    "app_title": "Komainu",
+    "app_subtitle": "Vaultwarden Docker Manager",
+    "active_monitoring": "Active Monitoring",
+    "logout": "Log Out",
+    "footer": "Komainu Monolith • Rust + HTMX + Tailwind CSS",
+    "operation_failed": "Operation failed:",
+    "session_expired": "Session expired",
+    "unauthorized": "Unauthorized",
+    "authenticated_success": "Authenticated successfully",
+    "passkey_registered_success": "Passkey registered successfully"
+  },
+  "login": {
+    "page_title": "Login - Komainu",
+    "header_title": "Komainu",
+    "header_subtitle": "Passkey Authentication",
+    "no_admin_warning": "<strong>Notice:</strong> No administrator registered. Run <code>./komainu --register</code> in the terminal to generate an access key.",
+    "description": "Exclusive administrative access protected by WebAuthn (Passkeys). Use your security key or biometrics.",
+    "button": "Sign in with Passkey",
+    "waiting_passkey": "Waiting for Passkey...",
+    "start_error": "Failed to initiate login",
+    "auth_error": "Failed to authenticate Passkey",
+    "default_error": "Error during authentication."
+  },
+  "register": {
+    "page_title": "Register Passkey - Komainu",
+    "header_title": "Administrator Registration",
+    "header_subtitle": "Temporary session authorized via terminal",
+    "description": "Register your device's Passkey to take control of Komainu. This link is single-use.",
+    "button": "Create Administrator Passkey",
+    "creating_credential": "Creating credential on device...",
+    "start_error": "Failed to initiate registration",
+    "save_error": "Failed to save Passkey",
+    "default_error": "Error during registration.",
+    "success_alert": "Passkey registered successfully! Redirecting to login.",
+    "token_missing": "Missing token",
+    "token_invalid": "Invalid or expired registration token."
+  },
+  "dashboard": {
+    "page_title": "Komainu - Vaultwarden Manager",
+    "instance_title": "Vaultwarden Instance",
+    "image_prefix": "Image:",
+    "started_prefix": "Started:",
+    "status_running": "Running",
+    "status_stopped": "Stopped",
+    "status_restarting": "Restarting",
+    "status_unknown": "Unknown",
+    "btn_start": "Start",
+    "btn_stop": "Stop",
+    "btn_restart": "Restart",
+    "btn_update": "Update Image",
+    "btn_rebuild": "Rebuild",
+    "confirm_rebuild": "Do you want to update the image and recreate the Vaultwarden container while preserving volumes?"
+  },
+  "metrics": {
+    "cpu_title": "CPU Usage",
+    "ram_title": "RAM Memory",
+    "disk_title": "Storage",
+    "container_label": "Vaultwarden Container",
+    "host_label": "Host Server",
+    "occupied_suffix": "occupied"
+  },
+  "cli": {
+    "reg_blocked_title": "KOMAINU - REGISTRATION BLOCKED",
+    "reg_blocked_admin_exists": "An administrator Passkey is already registered!",
+    "reg_blocked_single_admin": "Komainu is restricted to a single administrator.",
+    "reg_blocked_force_hint": "To replace the existing Passkey, run with --force:\n  ./komainu --register --force",
+    "reg_title": "KOMAINU - PASSKEY REGISTRATION",
+    "reg_scan_prompt": "Scan the QR Code with your mobile device or open the link below:",
+    "reg_direct_link": "Direct link:",
+    "reg_single_use": "This link is single-use. After registration, this route will be closed.",
+    "reg_ctrl_c": "Press Ctrl+C to exit after registration.",
+    "warn_no_admin_title": "[NOTICE] No administrator registered!",
+    "warn_no_admin_help": "Run './komainu --register' via terminal/SSH to register your Passkey securely.",
+    "server_starting": "Starting Komainu for container '{}' on port {}"
+  }
+}
+

@@ -28,6 +28,7 @@ pub struct AppState {
     pub system_service: Arc<SystemService>,
     pub auth_service: Arc<AuthService>,
     pub cookie_key: Key,
+    pub i18n: Arc<crate::i18n::Translations>,
 }
 
 impl FromRef<AppState> for Key {
@@ -83,22 +84,26 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         return Redirect::to("/").into_response();
     }
 
+    let i18n = &state.i18n;
     let has_admin = state.auth_service.has_admin().await;
     let warning_box = if !has_admin {
-        r##"<div class="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm">
-            <strong>Atenção:</strong> Nenhum administrador registrado. Execute <code>./komainu --register</code> no terminal para gerar a chave de acesso.
-        </div>"##
+        format!(
+            r##"<div class="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm">
+                {}
+            </div>"##,
+            i18n.login.no_admin_warning
+        )
     } else {
-        ""
+        String::new()
     };
 
     let html = format!(
         r##"<!DOCTYPE html>
-<html lang="pt-BR" class="dark">
+<html lang="{lang}" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Komainu</title>
+    <title>{page_title}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@github/webauthn-json@2.1.1/dist/browser-global/webauthn-json.browser-global.min.js"></script>
 </head>
@@ -109,15 +114,15 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                 狛
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">Komainu</h1>
-                <p class="text-xs text-slate-400">Autenticação por Passkey</p>
+                <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
+                <p class="text-xs text-slate-400">{header_subtitle}</p>
             </div>
         </div>
 
         {warning_box}
 
         <p class="text-sm text-slate-300 mb-6">
-            Acesso administrativo exclusivo protegido por WebAuthn (Passkeys). Utilize sua chave física ou biometria.
+            {description}
         </p>
 
         <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm"></div>
@@ -127,7 +132,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             onclick="startLogin()"
             class="w-full py-3 px-4 rounded-xl text-sm font-semibold transition shadow-lg flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white">
             <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-            Entrar com Passkey
+            {btn_text}
         </button>
     </div>
 
@@ -137,13 +142,13 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         const errDiv = document.getElementById('error-msg');
         errDiv.classList.add('hidden');
         btn.disabled = true;
-        btn.innerText = 'Aguardando Passkey...';
+        btn.innerText = '{waiting_passkey}';
 
         try {{
             const startRes = await fetch('/api/auth/login_start');
             if (!startRes.ok) {{
                 const err = await startRes.text();
-                throw new Error(err || 'Erro ao iniciar login');
+                throw new Error(err || '{start_error}');
             }}
             const data = await startRes.json();
             const credential = await webauthnJSON.get({{ publicKey: data.challenge }});
@@ -156,22 +161,32 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
             if (!finishRes.ok) {{
                 const err = await finishRes.text();
-                throw new Error(err || 'Falha ao autenticar Passkey');
+                throw new Error(err || '{auth_error}');
             }}
 
             window.location.href = '/';
         }} catch (err) {{
             console.error(err);
-            errDiv.innerText = err.message || 'Erro durante a autenticação.';
+            errDiv.innerText = err.message || '{default_error}';
             errDiv.classList.remove('hidden');
             btn.disabled = false;
-            btn.innerText = 'Entrar com Passkey';
+            btn.innerText = '{btn_text}';
         }}
     }}
     </script>
 </body>
 </html>"##,
-        warning_box = warning_box
+        lang = i18n.lang,
+        page_title = i18n.login.page_title,
+        header_title = i18n.login.header_title,
+        header_subtitle = i18n.login.header_subtitle,
+        warning_box = warning_box,
+        description = i18n.login.description,
+        btn_text = i18n.login.button,
+        waiting_passkey = i18n.login.waiting_passkey,
+        start_error = i18n.login.start_error,
+        auth_error = i18n.login.auth_error,
+        default_error = i18n.login.default_error,
     );
 
     Html(html).into_response()
@@ -213,7 +228,7 @@ async fn login_finish_handler(
             cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
 
             let jar = jar.add(cookie);
-            (jar, "Autenticado com sucesso").into_response()
+            (jar, state.i18n.common.authenticated_success.clone()).into_response()
         }
         Err(e) => (StatusCode::UNAUTHORIZED, e.to_string()).into_response(),
     }
@@ -237,22 +252,23 @@ async fn register_page(
     Query(query): Query<TokenQuery>,
     State(state): State<AppState>,
 ) -> Response {
+    let i18n = &state.i18n;
     let token = match query.token {
         Some(t) => t,
-        None => return (StatusCode::FORBIDDEN, "Token ausente").into_response(),
+        None => return (StatusCode::FORBIDDEN, i18n.register.token_missing.clone()).into_response(),
     };
 
     if !state.auth_service.is_valid_reg_token(&token).await {
-        return (StatusCode::FORBIDDEN, "Token de registro inválido ou expirado.").into_response();
+        return (StatusCode::FORBIDDEN, i18n.register.token_invalid.clone()).into_response();
     }
 
     let html = format!(
         r##"<!DOCTYPE html>
-<html lang="pt-BR" class="dark">
+<html lang="{lang}" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registrar Passkey - Komainu</title>
+    <title>{page_title}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@github/webauthn-json@2.1.1/dist/browser-global/webauthn-json.browser-global.min.js"></script>
 </head>
@@ -263,13 +279,13 @@ async fn register_page(
                 狛
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">Cadastro de Administrador</h1>
-                <p class="text-xs text-slate-400">Sessão temporária autorizada via terminal</p>
+                <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
+                <p class="text-xs text-slate-400">{header_subtitle}</p>
             </div>
         </div>
 
         <p class="text-sm text-slate-300 mb-6">
-            Cadastre a Passkey do seu dispositivo para assumir o controle do Komainu. Este link é de uso único.
+            {description}
         </p>
 
         <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm"></div>
@@ -279,7 +295,7 @@ async fn register_page(
             onclick="startRegistration('{token}')"
             class="w-full py-3 px-4 rounded-xl text-sm font-semibold transition shadow-lg flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white">
             <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            Criar Passkey do Administrador
+            {btn_text}
         </button>
     </div>
 
@@ -289,13 +305,13 @@ async fn register_page(
         const errDiv = document.getElementById('error-msg');
         errDiv.classList.add('hidden');
         btn.disabled = true;
-        btn.innerText = 'Criando credencial no dispositivo...';
+        btn.innerText = '{creating_credential}';
 
         try {{
             const startRes = await fetch(`/api/auth/register_start?token=${{encodeURIComponent(token)}}`);
             if (!startRes.ok) {{
                 const err = await startRes.text();
-                throw new Error(err || 'Falha ao iniciar registro');
+                throw new Error(err || '{start_error}');
             }}
             const data = await startRes.json();
             const credential = await webauthnJSON.create({{ publicKey: data.challenge }});
@@ -308,23 +324,34 @@ async fn register_page(
 
             if (!finishRes.ok) {{
                 const err = await finishRes.text();
-                throw new Error(err || 'Falha ao salvar Passkey');
+                throw new Error(err || '{save_error}');
             }}
 
-            alert('Passkey cadastrada com sucesso! Redirecionando para o login.');
+            alert('{success_alert}');
             window.location.href = '/login';
         }} catch (err) {{
             console.error(err);
-            errDiv.innerText = err.message || 'Erro durante o cadastro.';
+            errDiv.innerText = err.message || '{default_error}';
             errDiv.classList.remove('hidden');
             btn.disabled = false;
-            btn.innerText = 'Criar Passkey do Administrador';
+            btn.innerText = '{btn_text}';
         }}
     }}
     </script>
 </body>
 </html>"##,
-        token = token
+        lang = i18n.lang,
+        page_title = i18n.register.page_title,
+        header_title = i18n.register.header_title,
+        header_subtitle = i18n.register.header_subtitle,
+        description = i18n.register.description,
+        btn_text = i18n.register.button,
+        token = token,
+        creating_credential = i18n.register.creating_credential,
+        start_error = i18n.register.start_error,
+        save_error = i18n.register.save_error,
+        success_alert = i18n.register.success_alert,
+        default_error = i18n.register.default_error,
     );
 
     Html(html).into_response()
@@ -342,7 +369,7 @@ async fn register_start_handler(
 ) -> Response {
     let token = match query.token {
         Some(t) => t,
-        None => return (StatusCode::FORBIDDEN, "Token ausente").into_response(),
+        None => return (StatusCode::FORBIDDEN, state.i18n.register.token_missing.clone()).into_response(),
     };
 
     match state.auth_service.start_registration(&token).await {
@@ -364,11 +391,11 @@ async fn register_finish_handler(
 ) -> Response {
     let token = match query.token {
         Some(t) => t,
-        None => return (StatusCode::FORBIDDEN, "Token ausente").into_response(),
+        None => return (StatusCode::FORBIDDEN, state.i18n.register.token_missing.clone()).into_response(),
     };
 
     if !state.auth_service.is_valid_reg_token(&token).await {
-        return (StatusCode::FORBIDDEN, "Token inválido").into_response();
+        return (StatusCode::FORBIDDEN, state.i18n.register.token_invalid.clone()).into_response();
     }
 
     match state
@@ -376,7 +403,7 @@ async fn register_finish_handler(
         .finish_registration(payload.reg_id, &payload.credential)
         .await
     {
-        Ok(_) => (StatusCode::OK, "Passkey cadastrada com sucesso").into_response(),
+        Ok(_) => (StatusCode::OK, state.i18n.common.passkey_registered_success.clone()).into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
 }
@@ -390,14 +417,15 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         return Redirect::to("/login").into_response();
     }
 
+    let i18n = &state.i18n;
     let fragment = render_dashboard_fragment(&state, None).await;
     let html = format!(
         r##"<!DOCTYPE html>
-<html lang="pt-BR" class="dark">
+<html lang="{lang}" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Komainu - Vaultwarden Manager</title>
+    <title>{page_title}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script>
@@ -421,17 +449,17 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
                     狛
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold tracking-tight">Komainu</h1>
-                    <p class="text-xs text-slate-400">Vaultwarden Docker Manager</p>
+                    <h1 class="text-lg font-bold tracking-tight">{app_title}</h1>
+                    <p class="text-xs text-slate-400">{app_subtitle}</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Monitoramento Ativo
+                    {active_monitoring}
                 </span>
                 <a href="/logout" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
-                    Sair
+                    {logout}
                 </a>
             </div>
         </div>
@@ -444,11 +472,18 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     </main>
 
     <footer class="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
-        Komainu Monolith &bull; Rust + HTMX + Tailwind CSS
+        {footer}
     </footer>
 </body>
 </html>"##,
-        fragment = fragment
+        lang = i18n.lang,
+        page_title = i18n.dashboard.page_title,
+        app_title = i18n.common.app_title,
+        app_subtitle = i18n.common.app_subtitle,
+        active_monitoring = i18n.common.active_monitoring,
+        logout = i18n.common.logout,
+        fragment = fragment,
+        footer = i18n.common.footer,
     );
     Html(html).into_response()
 }
@@ -457,14 +492,14 @@ async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<Ap
     if !is_authenticated(&jar) {
         let mut headers = HeaderMap::new();
         headers.insert("HX-Redirect", "/login".parse().unwrap());
-        return (StatusCode::UNAUTHORIZED, headers, "Sessão expirada").into_response();
+        return (StatusCode::UNAUTHORIZED, headers, state.i18n.common.session_expired.clone()).into_response();
     }
     Html(render_dashboard_fragment(&state, None).await).into_response()
 }
 
 async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
+        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.start().await.err().map(|e| e.to_string());
     Html(render_dashboard_fragment(&state, err).await).into_response()
@@ -472,7 +507,7 @@ async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppSt
 
 async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
+        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.stop().await.err().map(|e| e.to_string());
     Html(render_dashboard_fragment(&state, err).await).into_response()
@@ -480,7 +515,7 @@ async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppSta
 
 async fn container_restart_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
+        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.restart().await.err().map(|e| e.to_string());
     Html(render_dashboard_fragment(&state, err).await).into_response()
@@ -488,7 +523,7 @@ async fn container_restart_handler(jar: SignedCookieJar, State(state): State<App
 
 async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
+        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.update_image().await.err().map(|e| e.to_string());
     Html(render_dashboard_fragment(&state, err).await).into_response()
@@ -496,13 +531,14 @@ async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppS
 
 async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
+        return (StatusCode::UNAUTHORIZED, state.i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.rebuild().await.err().map(|e| e.to_string());
     Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
 async fn render_dashboard_fragment(state: &AppState, action_error: Option<String>) -> String {
+    let i18n = &state.i18n;
     let status_res = state.container_service.status().await;
     let metrics = state.system_service.get_metrics().await;
 
@@ -510,8 +546,9 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         Some(e) => format!(
             r##"<div class="lg:col-span-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center gap-2">
                 <svg class="w-5 h-5 fill-current shrink-0" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
-                <span><strong>Falha na operação:</strong> {}</span>
+                <span><strong>{}</strong> {}</span>
             </div>"##,
+            i18n.common.operation_failed,
             e
         ),
         None => String::new(),
@@ -521,28 +558,40 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         Ok(status) => {
             let badge = match status.state {
                 ContainerState::Running => {
-                    r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Rodando
-                    </span>"##
+                    format!(
+                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span> {}
+                    </span>"##,
+                        i18n.dashboard.status_running
+                    )
                 }
                 ContainerState::Stopped => {
-                    r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-rose-400"></span> Parado
-                    </span>"##
+                    format!(
+                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-rose-400"></span> {}
+                    </span>"##,
+                        i18n.dashboard.status_stopped
+                    )
                 }
                 ContainerState::Restarting => {
-                    r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-spin"></span> Reiniciando
-                    </span>"##
+                    format!(
+                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-spin"></span> {}
+                    </span>"##,
+                        i18n.dashboard.status_restarting
+                    )
                 }
                 _ => {
-                    r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">
-                        Desconhecido
-                    </span>"##
+                    format!(
+                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">
+                        {}
+                    </span>"##,
+                        i18n.dashboard.status_unknown
+                    )
                 }
             };
             (
-                badge.to_string(),
+                badge,
                 status.image.clone(),
                 status.uptime.clone().unwrap_or_else(|| "N/A".to_string()),
                 status.cpu_usage_pct.map(|c| format!("{c:.1}%")).unwrap_or_else(|| "N/A".to_string()),
@@ -552,8 +601,9 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         Err(e) => (
             format!(
                 r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                    Erro: {}
+                    {} {}
                 </span>"##,
+                i18n.common.operation_failed,
                 e
             ),
             "N/A".to_string(),
@@ -573,10 +623,10 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
             <div>
                 <div class="flex items-center gap-3">
-                    <h2 class="text-xl font-bold tracking-tight">Instância Vaultwarden</h2>
+                    <h2 class="text-xl font-bold tracking-tight">{instance_title}</h2>
                     {status_badge}
                 </div>
-                <p class="text-sm text-slate-400 mt-1 font-mono text-xs">Imagem: {image_name} &bull; Início: {uptime_str}</p>
+                <p class="text-sm text-slate-400 mt-1 font-mono text-xs">{image_prefix} {image_name} &bull; {started_prefix} {uptime_str}</p>
             </div>
             
             <div class="flex flex-wrap items-center gap-2">
@@ -587,7 +637,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {disabled_start}
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
-                    Iniciar
+                    {btn_start}
                 </button>
                 <button 
                     hx-post="/api/container/stop" 
@@ -596,7 +646,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     {disabled_stop}
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
-                    Parar
+                    {btn_stop}
                 </button>
                 <button 
                     hx-post="/api/container/restart" 
@@ -604,7 +654,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     hx-swap="innerHTML"
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Reiniciar
+                    {btn_restart}
                 </button>
                 <button 
                     hx-post="/api/container/update" 
@@ -612,16 +662,16 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     hx-swap="innerHTML"
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                    Atualizar Imagem
+                    {btn_update}
                 </button>
                 <button 
                     hx-post="/api/container/rebuild" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    hx-confirm="Deseja atualizar a imagem e recriar o container Vaultwarden preservando os volumes?"
+                    hx-confirm="{confirm_rebuild}"
                     class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    Reconstruir
+                    {btn_rebuild}
                 </button>
             </div>
         </div>
@@ -631,7 +681,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
     <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
         <div>
             <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">Uso de CPU</span>
+                <span class="text-sm font-medium text-slate-400">{cpu_title}</span>
                 <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{cpu_usage:.1}%</span>
             </div>
             <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
@@ -639,7 +689,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
             </div>
         </div>
         <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">Container Vaultwarden</span>
+            <span class="text-slate-500">{container_label}</span>
             <span class="font-mono font-semibold text-blue-400">{container_cpu_str}</span>
         </div>
     </div>
@@ -648,7 +698,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
     <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
         <div>
             <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">Memória RAM</span>
+                <span class="text-sm font-medium text-slate-400">{ram_title}</span>
                 <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">{ram_used} / {ram_total} MB</span>
             </div>
             <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
@@ -656,7 +706,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
             </div>
         </div>
         <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">Container Vaultwarden</span>
+            <span class="text-slate-500">{container_label}</span>
             <span class="font-mono font-semibold text-purple-400">{container_ram_str}</span>
         </div>
     </div>
@@ -665,7 +715,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
     <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
         <div>
             <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">Armazenamento</span>
+                <span class="text-sm font-medium text-slate-400">{disk_title}</span>
                 <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{disk_used} / {disk_total} GB</span>
             </div>
             <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
@@ -673,26 +723,41 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
             </div>
         </div>
         <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">Servidor Host</span>
-            <span class="font-mono font-semibold text-emerald-400">{disk_pct:.1}% ocupado</span>
+            <span class="text-slate-500">{host_label}</span>
+            <span class="font-mono font-semibold text-emerald-400">{disk_pct:.1}% {occupied_suffix}</span>
         </div>
     </div>
 </div>"##,
         error_banner = error_banner,
+        instance_title = i18n.dashboard.instance_title,
         status_badge = status_badge,
+        image_prefix = i18n.dashboard.image_prefix,
         image_name = image_name,
+        started_prefix = i18n.dashboard.started_prefix,
         uptime_str = uptime_str,
         disabled_start = if is_running { "disabled" } else { "" },
         disabled_stop = if !is_running { "disabled" } else { "" },
+        btn_start = i18n.dashboard.btn_start,
+        btn_stop = i18n.dashboard.btn_stop,
+        btn_restart = i18n.dashboard.btn_restart,
+        btn_update = i18n.dashboard.btn_update,
+        btn_rebuild = i18n.dashboard.btn_rebuild,
+        confirm_rebuild = i18n.dashboard.confirm_rebuild,
+        cpu_title = i18n.metrics.cpu_title,
         cpu_usage = metrics.cpu_usage_pct,
+        container_label = i18n.metrics.container_label,
         container_cpu_str = container_cpu_str,
+        ram_title = i18n.metrics.ram_title,
         ram_used = metrics.ram_used_mb,
         ram_total = metrics.ram_total_mb,
         ram_pct = if metrics.ram_total_mb > 0 { (metrics.ram_used_mb as f32 / metrics.ram_total_mb as f32) * 100.0 } else { 0.0 },
         container_ram_str = container_ram_str,
+        disk_title = i18n.metrics.disk_title,
         disk_used = metrics.disk_used_gb,
         disk_total = metrics.disk_total_gb,
         disk_pct = if metrics.disk_total_gb > 0 { (metrics.disk_used_gb as f32 / metrics.disk_total_gb as f32) * 100.0 } else { 0.0 },
+        host_label = i18n.metrics.host_label,
+        occupied_suffix = i18n.metrics.occupied_suffix,
     )
 }
 
@@ -784,11 +849,13 @@ mod tests {
         let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
         let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
         let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            cookie_key,
+            container_service: container_service.clone(),
+            system_service: system_service.clone(),
+            auth_service: auth_service.clone(),
+            cookie_key: cookie_key.clone(),
+            i18n: i18n.clone(),
         };
 
         let fragment = render_dashboard_fragment(&state, None).await;
@@ -801,5 +868,19 @@ mod tests {
         let fragment_err = render_dashboard_fragment(&state, Some("Falha ao iniciar".to_string())).await;
         assert!(fragment_err.contains("Falha na operação:"));
         assert!(fragment_err.contains("Falha ao iniciar"));
+
+        // Test English fragment
+        let en_state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key,
+            i18n: Arc::new(crate::i18n::I18n::load("en")),
+        };
+        let en_fragment = render_dashboard_fragment(&en_state, None).await;
+        assert!(en_fragment.contains("Vaultwarden Instance"));
+        assert!(en_fragment.contains("CPU Usage"));
+        assert!(en_fragment.contains("RAM Memory"));
+        assert!(en_fragment.contains("Storage"));
     }
 }
