@@ -450,9 +450,13 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
             if (opts.publicKey) {{
-                opts.publicKey.userVerification = "required";
+                opts.publicKey.userVerification = "preferred";
                 delete opts.publicKey.extensions;
-                opts.publicKey.allowCredentials = [];
+                if (opts.publicKey.allowCredentials) {{
+                    for (const cred of opts.publicKey.allowCredentials) {{
+                        delete cred.transports;
+                    }}
+                }}
             }}
             const credential = await webauthnJSON.get(opts);
 
@@ -852,9 +856,13 @@ async fn qr_login_page(
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
             if (opts.publicKey) {{
-                opts.publicKey.userVerification = "required";
+                opts.publicKey.userVerification = "preferred";
                 delete opts.publicKey.extensions;
-                opts.publicKey.allowCredentials = [];
+                if (opts.publicKey.allowCredentials) {{
+                    for (const cred of opts.publicKey.allowCredentials) {{
+                        delete cred.transports;
+                    }}
+                }}
             }}
             const credential = await webauthnJSON.get(opts);
 
