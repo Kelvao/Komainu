@@ -186,8 +186,9 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
     let has_admin = state.auth_service.has_admin().await;
     let warning_box = if !has_admin {
         format!(
-            r##"<div class="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm">
-                {}
+            r##"<div class="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-start gap-3">
+                <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-bold shrink-0">WARN</span>
+                <span class="leading-relaxed">{}</span>
             </div>"##,
             i18n.login.no_admin_warning
         )
@@ -202,42 +203,93 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{page_title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {{
+        darkMode: 'class',
+        theme: {{
+          extend: {{
+            fontFamily: {{
+              display: ['"Space Grotesk"', 'sans-serif'],
+              sans: ['"Inter"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            }}
+          }}
+        }}
+      }};
+    </script>
+    <style>
+      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
+      :root {{
+        --bg-canvas: #07090e;
+        --bg-surface: #0d121d;
+        --border-rule: rgba(255, 255, 255, 0.08);
+        --border-rule-hover: rgba(255, 255, 255, 0.16);
+      }}
+      body {{
+        background-color: var(--bg-canvas);
+        background-image: 
+          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 60%),
+          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 100% 100%, 24px 24px;
+      }}
+      a:focus-visible, button:focus-visible {{
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }}
+    </style>
     <script>{webauthn_script}</script>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
-    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-        <div class="flex items-center justify-between gap-3 mb-6">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-2xl shadow-lg shadow-blue-500/20">
-                    狛
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
-                    <p class="text-xs text-slate-400">{header_subtitle}</p>
-                </div>
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
+    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <!-- Top accent rule -->
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent"></div>
+
+        <!-- Telemetry & Header -->
+        <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
+            <div class="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SYS // AUTH_GATEWAY</span>
             </div>
-            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700/60 shadow-sm" title="{lang_title}">
+            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]" title="{lang_title}">
                 <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                 <span>{lang_btn_label}</span>
             </a>
         </div>
 
+        <div class="flex items-center gap-3.5 mb-6">
+            <div class="w-11 h-11 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-2xl text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)] shrink-0">
+                狛
+            </div>
+            <div>
+                <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
+                <p class="text-xs text-slate-400 mt-0.5">{header_subtitle}</p>
+            </div>
+        </div>
+
         {warning_box}
 
-        <p class="text-sm text-slate-300 mb-6">
+        <p class="text-sm text-slate-300/90 leading-relaxed mb-6 font-sans">
             {description}
         </p>
 
-        <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm"></div>
+        <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
 
         <button 
             id="login-btn"
             onclick="startLogin()"
-            class="w-full py-3 px-4 rounded-xl text-sm font-semibold transition shadow-lg flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white">
-            <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-            {btn_text}
+            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
+            <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+            <span>{btn_text}</span>
         </button>
+
+        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            <span>FIDO2 / PASSKEY</span>
+            <span>HARDWARE SECURED</span>
+        </div>
     </div>
 
     <script>
@@ -394,34 +446,84 @@ async fn register_page(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{page_title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {{
+        darkMode: 'class',
+        theme: {{
+          extend: {{
+            fontFamily: {{
+              display: ['"Space Grotesk"', 'sans-serif'],
+              sans: ['"Inter"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            }}
+          }}
+        }}
+      }};
+    </script>
+    <style>
+      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
+      :root {{
+        --bg-canvas: #07090e;
+        --bg-surface: #0d121d;
+        --border-rule: rgba(255, 255, 255, 0.08);
+        --border-rule-hover: rgba(255, 255, 255, 0.16);
+      }}
+      body {{
+        background-color: var(--bg-canvas);
+        background-image: 
+          radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
+          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 100% 100%, 24px 24px;
+      }}
+      a:focus-visible, button:focus-visible {{
+        outline: 2px solid #10b981;
+        outline-offset: 2px;
+      }}
+    </style>
     <script>{webauthn_script}</script>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
-    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-        <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center font-black text-2xl shadow-lg shadow-emerald-500/20">
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
+    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <!-- Top accent rule -->
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent"></div>
+
+        <div class="flex items-center gap-2 font-mono text-[11px] text-emerald-400 mb-6 pb-4 border-b border-white/[0.06]">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>ENROLLMENT // TOKEN_ACTIVE</span>
+        </div>
+
+        <div class="flex items-center gap-3.5 mb-6">
+            <div class="w-11 h-11 rounded-lg bg-emerald-600/10 border border-emerald-500/30 flex items-center justify-center font-display font-bold text-2xl text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)] shrink-0">
                 狛
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">{header_title}</h1>
-                <p class="text-xs text-slate-400">{header_subtitle}</p>
+                <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
+                <p class="text-xs text-slate-400 mt-0.5">{header_subtitle}</p>
             </div>
         </div>
 
-        <p class="text-sm text-slate-300 mb-6">
+        <p class="text-sm text-slate-300/90 leading-relaxed mb-6 font-sans">
             {description}
         </p>
 
-        <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm"></div>
+        <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
 
         <button 
             id="reg-btn"
             onclick="startRegistration('{token}')"
-            class="w-full py-3 px-4 rounded-xl text-sm font-semibold transition shadow-lg flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white">
-            <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            {btn_text}
+            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
+            <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <span>{btn_text}</span>
         </button>
+
+        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            <span>RESIDENT_KEY // PREFERRED</span>
+            <span>FIDO2 / PASSKEY</span>
+        </div>
     </div>
 
     <script>
@@ -569,6 +671,9 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{page_title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script>
@@ -576,51 +681,82 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         darkMode: 'class',
         theme: {{
           extend: {{
-            colors: {{
-              brand: '#3b82f6',
+            fontFamily: {{
+              display: ['"Space Grotesk"', 'sans-serif'],
+              sans: ['"Inter"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
             }}
           }}
         }}
-      }}
+      }};
     </script>
+    <style>
+      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
+      :root {{
+        --bg-canvas: #07090e;
+        --bg-surface: #0d121d;
+        --border-rule: rgba(255, 255, 255, 0.08);
+        --border-rule-hover: rgba(255, 255, 255, 0.16);
+      }}
+      body {{
+        background-color: var(--bg-canvas);
+        background-image: 
+          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.06) 0%, transparent 60%),
+          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 100% 100%, 24px 24px;
+      }}
+      /* HTMX transition smoothing */
+      .htmx-swapping {{
+        opacity: 0.85;
+        transition: opacity 120ms ease-out;
+      }}
+      a:focus-visible, button:focus-visible {{
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }}
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
-    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+<body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <header class="border-b border-white/[0.08] bg-[#07090e]/85 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center font-black text-xl shadow-lg shadow-blue-500/20">
+                <div class="w-9 h-9 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-xl text-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.2)]">
                     狛
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold tracking-tight">{app_title}</h1>
-                    <p class="text-xs text-slate-400">{app_subtitle}</p>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">v0.2</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    {active_monitoring}
+            <div class="flex items-center gap-2 sm:gap-3">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>{active_monitoring}</span>
                 </span>
 
-                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1.5 border border-slate-700/60 shadow-sm" title="{lang_title}">
+                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]" title="{lang_title}">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                     <span>{lang_btn_label}</span>
                 </a>
 
-                <a href="{base_path}/logout" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
-                    {logout}
+                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08]">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    <span>{logout}</span>
                 </a>
             </div>
         </div>
     </header>
 
-    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
         <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
             {fragment}
         </div>
     </main>
 
-    <footer class="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
+    <footer class="border-t border-white/[0.06] py-4 text-center text-xs font-mono text-slate-500">
         {footer}
     </footer>
 </body>
@@ -703,12 +839,12 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
 
     let error_banner = match action_error {
         Some(e) => format!(
-            r##"<div id="action-error-banner" class="lg:col-span-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center justify-between gap-3 shadow-lg">
-                <div class="flex items-center gap-2">
-                    <svg class="w-5 h-5 fill-current shrink-0" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+            r##"<div id="action-error-banner" class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2.5">
+                    <span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold shrink-0">FAIL</span>
                     <span><strong>{}</strong> {}</span>
                 </div>
-                <button type="button" onclick="document.getElementById('action-error-banner').remove()" class="text-rose-400/70 hover:text-rose-300 transition p-1 rounded-lg hover:bg-rose-500/20" title="Dismiss">
+                <button type="button" onclick="document.getElementById('action-error-banner').remove()" class="text-rose-400/70 hover:text-rose-200 transition p-1 rounded-md hover:bg-rose-500/20" title="Dismiss">
                     <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>"##,
@@ -723,31 +859,31 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             let badge = match status.state {
                 ContainerState::Running => {
                     format!(
-                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span> {}
+                        r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> {}
                     </span>"##,
                         i18n.dashboard.status_running
                     )
                 }
                 ContainerState::Stopped => {
                     format!(
-                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-rose-400"></span> {}
+                        r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span> {}
                     </span>"##,
                         i18n.dashboard.status_stopped
                     )
                 }
                 ContainerState::Restarting => {
                     format!(
-                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-spin"></span> {}
+                        r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-spin"></span> {}
                     </span>"##,
                         i18n.dashboard.status_restarting
                     )
                 }
                 _ => {
                     format!(
-                        r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">
+                        r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-white/[0.05] text-slate-400 border border-white/[0.08]">
                         {}
                     </span>"##,
                         i18n.dashboard.status_unknown
@@ -786,7 +922,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
         }
         Err(e) => (
             format!(
-                r##"<span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30">
                     {} {}
                 </span>"##,
                 i18n.common.operation_failed,
@@ -804,96 +940,99 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     let is_running = matches!(status_res.as_ref().map(|s| &s.state), Ok(ContainerState::Running));
 
     format!(
-        r##"<div class="space-y-8">
+        r##"<div class="space-y-6">
     {error_banner}
 
     <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
-    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+    <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.06]">
             <div>
                 <div class="flex items-center gap-3">
-                    <h2 class="text-xl font-bold tracking-tight">{instance_title}</h2>
+                    <h2 class="text-xl font-display font-bold tracking-tight text-white">{instance_title}</h2>
                     {status_badge}
                 </div>
-                <p class="text-sm text-slate-400 mt-1 font-mono text-xs">{image_prefix} {image_name} &bull; {started_prefix} {uptime_str}</p>
+                <p class="text-xs text-slate-400 mt-1 font-mono">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-[#07090e]/80 rounded-lg border border-white/[0.06]">
                 <button 
                     hx-post="{base_path}/api/container/start" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
-                    class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm shadow-emerald-950/60">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
-                    {btn_start}
+                    <span>{btn_start}</span>
                 </button>
                 <button 
                     hx-post="{base_path}/api/container/stop" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
-                    class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm shadow-rose-950/60">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
-                    {btn_stop}
+                    <span>{btn_stop}</span>
                 </button>
                 <button 
                     hx-post="{base_path}/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm shadow-amber-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    {btn_restart}
+                    <span>{btn_restart}</span>
                 </button>
                 <button 
                     hx-post="{base_path}/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm shadow-sky-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                    {btn_update}
+                    <span>{btn_update}</span>
                 </button>
                 <button 
                     hx-post="{base_path}/api/container/rebuild" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
-                    class="px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-sm flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm shadow-indigo-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    {btn_rebuild}
+                    <span>{btn_rebuild}</span>
                 </button>
             </div>
         </div>
 
         <!-- Consumo Exclusivo do Container -->
-        <div class="mt-6">
-            <div class="flex items-center gap-2 mb-4">
-                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">{container_section}</h3>
+        <div class="mt-6 pt-5 border-t border-white/[0.06]">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="w-1.5 h-1.5 bg-cyan-400 rounded-sm"></span>
+                <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{container_section}</h3>
+                <div class="flex-1 h-px bg-white/[0.04]"></div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- CPU Container -->
-                <div class="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                <div class="bg-[#07090e]/60 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-white/[0.12] transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-medium text-slate-400">{container_cpu}</span>
-                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{container_cpu_val}</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
                         </div>
-                        <div class="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden">
-                            <div class="bg-cyan-500 h-2 rounded-full transition-all duration-500" style="width: {container_cpu_bar_pct:.1}%"></div>
+                        <div class="w-full bg-[#0d121d] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                            <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- RAM Container -->
-                <div class="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                <div class="bg-[#07090e]/60 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-white/[0.12] transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-medium text-slate-400">{container_ram}</span>
-                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">{container_ram_val}</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/25">{container_ram_val}</span>
                         </div>
-                        <div class="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden">
-                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-500" style="width: {container_ram_bar_pct:.1}%"></div>
+                        <div class="w-full bg-[#0d121d] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
                         </div>
                     </div>
                 </div>
@@ -902,62 +1041,62 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     </div>
 
     <!-- SEÇÃO 2: CONSUMO GERAL DA MÁQUINA (HOST) -->
-    <div class="space-y-4">
-        <div class="flex items-center gap-3">
-            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">{host_section}</h3>
-            <div class="flex-1 h-px bg-slate-800/80"></div>
+    <div class="space-y-3">
+        <div class="flex items-center gap-2">
+            <span class="w-1.5 h-1.5 bg-slate-400 rounded-sm"></span>
+            <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{host_section}</h3>
+            <div class="flex-1 h-px bg-white/[0.04]"></div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Métrica CPU Host -->
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-sm font-medium text-slate-400">{cpu_title}</span>
-                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{cpu_usage:.1}%</span>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/25">{cpu_usage:.1}%</span>
                     </div>
-                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                        <div class="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: {cpu_usage:.1}%"></div>
+                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-blue-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(59,130,246,0.35)]" style="width: {cpu_usage:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="font-mono text-slate-400">{cpu_usage:.1}%</span>
+                    <span class="text-slate-300 font-semibold">{cpu_usage:.1}%</span>
                 </div>
             </div>
 
             <!-- Métrica RAM Host -->
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-sm font-medium text-slate-400">{ram_title}</span>
-                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">{ram_used} / {ram_total} MB</span>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
                     </div>
-                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                        <div class="bg-purple-500 h-2.5 rounded-full transition-all duration-500" style="width: {ram_pct:.1}%"></div>
+                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-purple-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(168,85,247,0.35)]" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="font-mono font-semibold text-purple-400">{ram_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-purple-400 font-semibold">{ram_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
 
             <!-- Métrica Disco Host -->
-            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+            <div class="bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-white/[0.15] transition-all flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-sm font-medium text-slate-400">{disk_title}</span>
-                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{disk_used} / {disk_total} GB</span>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
                     </div>
-                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                        <div class="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style="width: {disk_pct:.1}%"></div>
+                    <div class="w-full bg-[#07090e] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-emerald-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.35)]" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="font-mono font-semibold text-emerald-400">{disk_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-emerald-400 font-semibold">{disk_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
         </div>
