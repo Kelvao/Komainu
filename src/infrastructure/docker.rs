@@ -30,6 +30,22 @@ impl DockerAdapter {
         Docker::connect_with_unix(&self.socket_path, 120, bollard::API_DEFAULT_VERSION)
             .map_err(|_| ContainerError::SocketUnavailable(self.socket_path.clone()))
     }
+
+    async fn pull_image(&self, docker: &Docker, image: &str) -> Result<(), ContainerError> {
+        let options = Some(CreateImageOptions {
+            from_image: image.to_string(),
+            ..Default::default()
+        });
+
+        let mut stream = docker.create_image(options, None, None);
+        while let Some(item) = stream.next().await {
+            if let Err(e) = item {
+                return Err(ContainerError::ImagePullFailed(e.to_string()));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl ContainerPort for DockerAdapter {
@@ -160,19 +176,7 @@ impl ContainerPort for DockerAdapter {
                 .and_then(|c| c.image)
                 .unwrap_or_else(|| "vaultwarden/server:latest".to_string());
 
-            let options = Some(CreateImageOptions {
-                from_image: image,
-                ..Default::default()
-            });
-
-            let mut stream = docker.create_image(options, None, None);
-            while let Some(item) = stream.next().await {
-                if let Err(e) = item {
-                    return Err(ContainerError::ImagePullFailed(e.to_string()));
-                }
-            }
-
-            Ok(())
+            self.pull_image(&docker, &image).await
         })
     }
 
@@ -187,8 +191,14 @@ impl ContainerPort for DockerAdapter {
                 .await
                 .map_err(|e| ContainerError::Infrastructure(e.to_string()))?;
 
-            // 2. Pull da imagem mais recente
-            self.update_image(&name).await?;
+            let image = inspect
+                .config
+                .as_ref()
+                .and_then(|c| c.image.clone())
+                .unwrap_or_else(|| "vaultwarden/server:latest".to_string());
+
+            // 2. Pull da imagem mais recente diretamente sem re-inspecionar o container
+            self.pull_image(&docker, &image).await?;
 
             // 3. Parar container se estiver rodando
             let _ = docker.stop_container(&name, None).await;
