@@ -82,7 +82,20 @@ pub struct MetricsTranslations {
     pub container_label: String,
     pub host_label: String,
     pub occupied_suffix: String,
+    #[serde(default = "default_container_section")]
+    pub container_section: String,
+    #[serde(default = "default_host_section")]
+    pub host_section: String,
+    #[serde(default = "default_container_cpu")]
+    pub container_cpu: String,
+    #[serde(default = "default_container_ram")]
+    pub container_ram: String,
 }
+
+fn default_container_section() -> String { "Consumo do Container".to_string() }
+fn default_host_section() -> String { "Consumo Geral da Máquina (Host)".to_string() }
+fn default_container_cpu() -> String { "CPU do Container".to_string() }
+fn default_container_ram() -> String { "RAM do Container".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliTranslations {

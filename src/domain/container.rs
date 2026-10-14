@@ -22,6 +22,7 @@ pub struct ContainerStatus {
     pub uptime: Option<String>,
     pub cpu_usage_pct: Option<f32>,
     pub memory_used_mb: Option<u64>,
+    pub memory_limit_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

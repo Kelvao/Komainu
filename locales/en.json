@@ -60,7 +60,11 @@
     "disk_title": "Storage",
     "container_label": "Vaultwarden Container",
     "host_label": "Host Server",
-    "occupied_suffix": "occupied"
+    "occupied_suffix": "occupied",
+    "container_section": "Container Resource Usage",
+    "host_section": "Host Machine Resource Usage",
+    "container_cpu": "Container CPU",
+    "container_ram": "Container RAM"
   },
   "cli": {
     "reg_blocked_title": "KOMAINU - REGISTRATION BLOCKED",

@@ -526,7 +526,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     </header>
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
-        <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 5s" hx-swap="innerHTML">
+        <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
             {fragment}
         </div>
     </main>
@@ -621,7 +621,7 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         None => String::new(),
     };
 
-    let (status_badge, image_name, uptime_str, container_cpu_str, container_ram_str) = match &status_res {
+    let (status_badge, image_name, uptime_str, container_cpu_val, container_cpu_bar_pct, container_ram_val, container_ram_bar_pct) = match &status_res {
         Ok(status) => {
             let badge = match status.state {
                 ContainerState::Running => {
@@ -657,12 +657,34 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                     )
                 }
             };
+
+            let cpu_val = status.cpu_usage_pct.map(|c| format!("{c:.1}%")).unwrap_or_else(|| "0.0%".to_string());
+            let cpu_bar = status.cpu_usage_pct.unwrap_or(0.0).clamp(0.0, 100.0);
+
+            let (ram_val, ram_bar) = match (status.memory_used_mb, status.memory_limit_mb) {
+                (Some(used), Some(limit)) if limit > 0 && limit < metrics.ram_total_mb => {
+                    let pct = (used as f32 / limit as f32) * 100.0;
+                    (format!("{used} / {limit} MB ({pct:.1}%)"), pct.clamp(0.0, 100.0))
+                }
+                (Some(used), _) => {
+                    let pct = if metrics.ram_total_mb > 0 {
+                        (used as f32 / metrics.ram_total_mb as f32) * 100.0
+                    } else {
+                        0.0
+                    };
+                    (format!("{used} MB ({pct:.1}%)"), pct.clamp(0.0, 100.0))
+                }
+                (None, _) => ("0 MB (0.0%)".to_string(), 0.0),
+            };
+
             (
                 badge,
                 status.image.clone(),
                 status.uptime.clone().unwrap_or_else(|| "N/A".to_string()),
-                status.cpu_usage_pct.map(|c| format!("{c:.1}%")).unwrap_or_else(|| "N/A".to_string()),
-                status.memory_used_mb.map(|m| format!("{m} MB")).unwrap_or_else(|| "N/A".to_string()),
+                cpu_val,
+                cpu_bar,
+                ram_val,
+                ram_bar,
             )
         }
         Err(e) => (
@@ -675,18 +697,21 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
             ),
             "N/A".to_string(),
             "N/A".to_string(),
-            "N/A".to_string(),
-            "N/A".to_string(),
+            "0.0%".to_string(),
+            0.0,
+            "0 MB (0.0%)".to_string(),
+            0.0,
         ),
     };
 
     let is_running = matches!(status_res.as_ref().map(|s| &s.state), Ok(ContainerState::Running));
 
     format!(
-        r##"<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        r##"<div class="space-y-8">
     {error_banner}
-    <!-- Card do Container -->
-    <div class="lg:col-span-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur">
+
+    <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
+    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
             <div>
                 <div class="flex items-center gap-3">
@@ -742,56 +767,102 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
                 </button>
             </div>
         </div>
+
+        <!-- Consumo Exclusivo do Container -->
+        <div class="mt-6">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">{container_section}</h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- CPU Container -->
+                <div class="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-slate-400">{container_cpu}</span>
+                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{container_cpu_val}</span>
+                        </div>
+                        <div class="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden">
+                            <div class="bg-cyan-500 h-2 rounded-full transition-all duration-500" style="width: {container_cpu_bar_pct:.1}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RAM Container -->
+                <div class="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-slate-400">{container_ram}</span>
+                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">{container_ram_val}</span>
+                        </div>
+                        <div class="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden">
+                            <div class="bg-indigo-500 h-2 rounded-full transition-all duration-500" style="width: {container_ram_bar_pct:.1}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Métrica CPU -->
-    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
-        <div>
-            <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">{cpu_title}</span>
-                <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{cpu_usage:.1}%</span>
-            </div>
-            <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                <div class="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: {cpu_usage:.1}%"></div>
-            </div>
+    <!-- SEÇÃO 2: CONSUMO GERAL DA MÁQUINA (HOST) -->
+    <div class="space-y-4">
+        <div class="flex items-center gap-3">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">{host_section}</h3>
+            <div class="flex-1 h-px bg-slate-800/80"></div>
         </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">{container_label}</span>
-            <span class="font-mono font-semibold text-blue-400">{container_cpu_str}</span>
-        </div>
-    </div>
 
-    <!-- Métrica RAM -->
-    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
-        <div>
-            <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">{ram_title}</span>
-                <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">{ram_used} / {ram_total} MB</span>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Métrica CPU Host -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-sm font-medium text-slate-400">{cpu_title}</span>
+                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">{cpu_usage:.1}%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div class="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: {cpu_usage:.1}%"></div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                    <span class="text-slate-500">{host_label}</span>
+                    <span class="font-mono text-slate-400">{cpu_usage:.1}%</span>
+                </div>
             </div>
-            <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                <div class="bg-purple-500 h-2.5 rounded-full transition-all duration-500" style="width: {ram_pct:.1}%"></div>
-            </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">{container_label}</span>
-            <span class="font-mono font-semibold text-purple-400">{container_ram_str}</span>
-        </div>
-    </div>
 
-    <!-- Métrica Disco -->
-    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
-        <div>
-            <div class="flex items-center justify-between mb-4">
-                <span class="text-sm font-medium text-slate-400">{disk_title}</span>
-                <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{disk_used} / {disk_total} GB</span>
+            <!-- Métrica RAM Host -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-sm font-medium text-slate-400">{ram_title}</span>
+                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">{ram_used} / {ram_total} MB</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div class="bg-purple-500 h-2.5 rounded-full transition-all duration-500" style="width: {ram_pct:.1}%"></div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                    <span class="text-slate-500">{host_label}</span>
+                    <span class="font-mono font-semibold text-purple-400">{ram_pct:.1}% {occupied_suffix}</span>
+                </div>
             </div>
-            <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                <div class="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style="width: {disk_pct:.1}%"></div>
+
+            <!-- Métrica Disco Host -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-sm font-medium text-slate-400">{disk_title}</span>
+                        <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{disk_used} / {disk_total} GB</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div class="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style="width: {disk_pct:.1}%"></div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                    <span class="text-slate-500">{host_label}</span>
+                    <span class="font-mono font-semibold text-emerald-400">{disk_pct:.1}% {occupied_suffix}</span>
+                </div>
             </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500">{host_label}</span>
-            <span class="font-mono font-semibold text-emerald-400">{disk_pct:.1}% {occupied_suffix}</span>
         </div>
     </div>
 </div>"##,
@@ -811,15 +882,20 @@ async fn render_dashboard_fragment(state: &AppState, action_error: Option<String
         btn_update = i18n.dashboard.btn_update,
         btn_rebuild = i18n.dashboard.btn_rebuild,
         confirm_rebuild = i18n.dashboard.confirm_rebuild,
+        container_section = i18n.metrics.container_section,
+        container_cpu = i18n.metrics.container_cpu,
+        container_cpu_val = container_cpu_val,
+        container_cpu_bar_pct = container_cpu_bar_pct,
+        container_ram = i18n.metrics.container_ram,
+        container_ram_val = container_ram_val,
+        container_ram_bar_pct = container_ram_bar_pct,
+        host_section = i18n.metrics.host_section,
         cpu_title = i18n.metrics.cpu_title,
         cpu_usage = metrics.cpu_usage_pct,
-        container_label = i18n.metrics.container_label,
-        container_cpu_str = container_cpu_str,
         ram_title = i18n.metrics.ram_title,
         ram_used = metrics.ram_used_mb,
         ram_total = metrics.ram_total_mb,
         ram_pct = if metrics.ram_total_mb > 0 { (metrics.ram_used_mb as f32 / metrics.ram_total_mb as f32) * 100.0 } else { 0.0 },
-        container_ram_str = container_ram_str,
         disk_title = i18n.metrics.disk_title,
         disk_used = metrics.disk_used_gb,
         disk_total = metrics.disk_total_gb,
@@ -861,6 +937,7 @@ mod tests {
                     uptime: Some("Up 5 hours".to_string()),
                     cpu_usage_pct: Some(0.8),
                     memory_used_mb: Some(32),
+                    memory_limit_mb: Some(512),
                 })
             })
         }
@@ -942,6 +1019,10 @@ mod tests {
 
         let fragment = render_dashboard_fragment(&state, None).await;
         assert!(fragment.contains("Instância Vaultwarden"));
+        assert!(fragment.contains("Consumo do Container"));
+        assert!(fragment.contains("Consumo Geral da Máquina (Host)"));
+        assert!(fragment.contains("CPU do Container"));
+        assert!(fragment.contains("RAM do Container"));
         assert!(fragment.contains("Uso de CPU"));
         assert!(fragment.contains("Memória RAM"));
         assert!(fragment.contains("Armazenamento"));
@@ -976,6 +1057,10 @@ mod tests {
         };
         let en_fragment = render_dashboard_fragment(&en_state, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
+        assert!(en_fragment.contains("Container Resource Usage"));
+        assert!(en_fragment.contains("Host Machine Resource Usage"));
+        assert!(en_fragment.contains("Container CPU"));
+        assert!(en_fragment.contains("Container RAM"));
         assert!(en_fragment.contains("CPU Usage"));
         assert!(en_fragment.contains("RAM Memory"));
         assert!(en_fragment.contains("Storage"));

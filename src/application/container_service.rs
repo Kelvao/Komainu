@@ -56,6 +56,7 @@ mod tests {
                     uptime: Some("Up 1m".to_string()),
                     cpu_usage_pct: Some(1.2),
                     memory_used_mb: Some(48),
+                    memory_limit_mb: Some(512),
                 })
             })
         }

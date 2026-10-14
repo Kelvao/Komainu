@@ -10,7 +10,7 @@ use std::sync::Mutex;
 pub struct DockerAdapter {
     socket_path: String,
     docker: Option<Docker>,
-    prev_cpu: Mutex<HashMap<String, (u64, u64)>>,
+    prev_cpu: Mutex<HashMap<String, (u64, u64, std::time::Instant)>>,
 }
 
 impl DockerAdapter {
@@ -82,40 +82,68 @@ impl ContainerPort for DockerAdapter {
 
             let started_at = state_info.and_then(|s| s.started_at.clone());
 
-            let (cpu_usage_pct, memory_used_mb) = if is_running {
+            let (cpu_usage_pct, memory_used_mb, memory_limit_mb) = if is_running {
                 let mut stats_stream = docker.stats(&name, Some(StatsOptions { stream: false, one_shot: true }));
                 if let Some(Ok(stats)) = stats_stream.next().await {
-                    let mem_mb = stats.memory_stats.usage.map(|u| u / (1024 * 1024));
+                    let mem_used = match stats.memory_stats.stats {
+                        Some(bollard::container::MemoryStatsStats::V1(ref v1)) => {
+                            let cache = if v1.total_inactive_file > 0 {
+                                v1.total_inactive_file
+                            } else {
+                                v1.cache
+                            };
+                            stats.memory_stats.usage.unwrap_or(0).saturating_sub(cache)
+                        }
+                        Some(bollard::container::MemoryStatsStats::V2(ref v2)) => {
+                            stats.memory_stats.usage.unwrap_or(0).saturating_sub(v2.inactive_file)
+                        }
+                        None => stats.memory_stats.usage.unwrap_or(0),
+                    };
+                    let mem_mb = Some(mem_used / (1024 * 1024));
+                    let limit_mb = stats.memory_stats.limit.map(|l| l / (1024 * 1024));
 
                     let cur_cpu = stats.cpu_stats.cpu_usage.total_usage;
                     let cur_sys = stats.cpu_stats.system_cpu_usage.unwrap_or(0);
-                    let online_cpus = stats.cpu_stats.online_cpus.unwrap_or(1);
+                    let online_cpus = stats.cpu_stats.online_cpus.unwrap_or_else(|| {
+                        stats.cpu_stats.cpu_usage.percpu_usage.as_ref().map(|p| p.len() as u64).unwrap_or(1)
+                    });
+                    let now = std::time::Instant::now();
 
-                    let (cpu_delta, sys_delta) = {
+                    let (cpu_delta, sys_delta, time_delta_nanos) = {
                         let mut prev_map = self.prev_cpu.lock().unwrap_or_else(|e| e.into_inner());
-                        let deltas = if let Some(&(prev_c, prev_s)) = prev_map.get(&name) {
-                            (cur_cpu.saturating_sub(prev_c), cur_sys.saturating_sub(prev_s))
+                        let deltas = if let Some(&(prev_c, prev_s, prev_t)) = prev_map.get(&name) {
+                            (
+                                cur_cpu.saturating_sub(prev_c),
+                                cur_sys.saturating_sub(prev_s),
+                                now.duration_since(prev_t).as_nanos() as u64,
+                            )
                         } else {
                             let precpu = stats.precpu_stats.cpu_usage.total_usage;
                             let presys = stats.precpu_stats.system_cpu_usage.unwrap_or(0);
-                            (cur_cpu.saturating_sub(precpu), cur_sys.saturating_sub(presys))
+                            (
+                                cur_cpu.saturating_sub(precpu),
+                                cur_sys.saturating_sub(presys),
+                                0,
+                            )
                         };
-                        prev_map.insert(name.clone(), (cur_cpu, cur_sys));
+                        prev_map.insert(name.clone(), (cur_cpu, cur_sys, now));
                         deltas
                     };
 
                     let cpu_pct = if sys_delta > 0 && cpu_delta > 0 {
                         (cpu_delta as f32 / sys_delta as f32) * (online_cpus as f32) * 100.0
+                    } else if time_delta_nanos > 0 && cpu_delta > 0 {
+                        (cpu_delta as f32 / time_delta_nanos as f32) * 100.0
                     } else {
                         0.0
                     };
 
-                    (Some(cpu_pct), mem_mb)
+                    (Some((cpu_pct * 10.0).round() / 10.0), mem_mb, limit_mb)
                 } else {
-                    (None, None)
+                    (None, None, None)
                 }
             } else {
-                (None, None)
+                (None, None, None)
             };
 
             Ok(ContainerStatus {
@@ -125,6 +153,7 @@ impl ContainerPort for DockerAdapter {
                 uptime: started_at,
                 cpu_usage_pct,
                 memory_used_mb,
+                memory_limit_mb,
             })
         })
     }
