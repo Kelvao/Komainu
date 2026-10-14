@@ -220,6 +220,12 @@ impl ContainerPort for DockerAdapter {
                 .await
                 .map_err(|e| ContainerError::Infrastructure(e.to_string()))?;
 
+            let was_running = inspect
+                .state
+                .as_ref()
+                .and_then(|s| s.running)
+                .unwrap_or(false);
+
             let image = inspect
                 .config
                 .as_ref()
@@ -230,7 +236,9 @@ impl ContainerPort for DockerAdapter {
             self.pull_image(&docker, &image).await?;
 
             // 3. Parar container se estiver rodando
-            let _ = docker.stop_container(&name, None).await;
+            if was_running {
+                let _ = docker.stop_container(&name, None).await;
+            }
 
             // 4. Renomear container antigo para backup temporário em vez de destruí-lo prematuramente
             let backup_name = format!("{}_rebuild_bak", name);
@@ -266,18 +274,22 @@ impl ContainerPort for DockerAdapter {
             });
 
             if let Err(e) = docker.create_container(create_options, create_config).await {
-                // Rollback: restaurar nome do backup e reiniciar
+                // Rollback: restaurar nome do backup e reiniciar apenas se estava rodando
                 let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
-                let _ = docker.start_container::<String>(&name, None).await;
+                if was_running {
+                    let _ = docker.start_container::<String>(&name, None).await;
+                }
                 return Err(ContainerError::RebuildFailed(format!("Recreation failed (rolled back): {e}")));
             }
 
             // 6. Iniciar o novo container
             if let Err(e) = docker.start_container::<String>(&name, None).await {
-                // Rollback: remover novo container quebrado, restaurar backup e reiniciar
+                // Rollback: remover novo container quebrado, restaurar backup e reiniciar apenas se estava rodando
                 let _ = docker.remove_container(&name, None).await;
                 let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
-                let _ = docker.start_container::<String>(&name, None).await;
+                if was_running {
+                    let _ = docker.start_container::<String>(&name, None).await;
+                }
                 return Err(ContainerError::StartFailed(format!("Start failed (rolled back): {e}")));
             }
 
