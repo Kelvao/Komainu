@@ -21,6 +21,7 @@ use crate::domain::container::ContainerState;
 use axum::extract::FromRef;
 
 const SESSION_COOKIE: &str = "komainu_session";
+const SESSION_DURATION_SECS: u64 = 7 * 24 * 3600; // 7 days
 
 #[derive(Clone)]
 pub struct AppState {
@@ -74,9 +75,24 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 fn is_authenticated(jar: &SignedCookieJar) -> bool {
-    jar.get(SESSION_COOKIE)
-        .map(|c| c.value() == "admin")
-        .unwrap_or(false)
+    let cookie = match jar.get(SESSION_COOKIE) {
+        Some(c) => c,
+        None => return false,
+    };
+    let val = cookie.value();
+    if val == "admin" {
+        return true;
+    }
+    if let Some(ts_str) = val.strip_prefix("admin:") {
+        if let Ok(ts) = ts_str.parse::<u64>() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            return now.saturating_sub(ts) < SESSION_DURATION_SECS;
+        }
+    }
+    false
 }
 
 async fn health_check() -> &'static str {
@@ -238,9 +254,14 @@ async fn login_finish_handler(
         .await
     {
         Ok(_) => {
-            let mut cookie = Cookie::new(SESSION_COOKIE, "admin");
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
             cookie.set_path("/");
             cookie.set_http_only(true);
+            cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
             cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
 
             let jar = jar.add(cookie);

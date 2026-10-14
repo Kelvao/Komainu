@@ -21,6 +21,7 @@ sha2 = "0.10"
 qrcode = { version = "0.14", default-features = false }
 futures-util = "0.3"
 openssl = { version = "0.10", features = ["vendored"] }
+time = "0.3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
