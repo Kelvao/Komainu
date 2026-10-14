@@ -89,9 +89,6 @@ fn is_authenticated(jar: &SignedCookieJar) -> bool {
         None => return false,
     };
     let val = cookie.value();
-    if val == "admin" {
-        return true;
-    }
     if let Some(ts_str) = val.strip_prefix("admin:") {
         if let Ok(ts) = ts_str.parse::<u64>() {
             let now = std::time::SystemTime::now()
