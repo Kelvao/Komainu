@@ -187,11 +187,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             if (opts.publicKey) {{
                 opts.publicKey.userVerification = "preferred";
                 delete opts.publicKey.extensions;
-                if (opts.publicKey.allowCredentials) {{
-                    for (const cred of opts.publicKey.allowCredentials) {{
-                        delete cred.transports;
-                    }}
-                }}
+                opts.publicKey.allowCredentials = [];
             }}
             const credential = await webauthnJSON.get(opts);
 
@@ -370,11 +366,10 @@ async fn register_page(
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
             if (opts.publicKey) {{
                 delete opts.publicKey.extensions;
-                if (opts.publicKey.authenticatorSelection) {{
-                    opts.publicKey.authenticatorSelection.residentKey = "required";
-                    opts.publicKey.authenticatorSelection.requireResidentKey = true;
-                    opts.publicKey.authenticatorSelection.userVerification = "preferred";
-                }}
+                opts.publicKey.authenticatorSelection = {{
+                    residentKey: "preferred",
+                    userVerification: "preferred"
+                }};
             }}
             const credential = await webauthnJSON.create(opts);
 
