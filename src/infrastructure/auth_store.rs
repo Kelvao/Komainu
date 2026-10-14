@@ -51,15 +51,21 @@ impl CredentialStorePort for FileCredentialStore {
                 }
             }
 
-            fs::write(&self.path, json)
+            let tmp_path = format!("{}.tmp", self.path.display());
+
+            fs::write(&tmp_path, json)
                 .await
-                .map_err(|e| AuthError::StoreError(format!("Falha ao salvar credencial: {e}")))?;
+                .map_err(|e| AuthError::StoreError(format!("Falha ao salvar credencial temporária: {e}")))?;
 
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600)).await;
+                let _ = fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600)).await;
             }
+
+            fs::rename(&tmp_path, &self.path)
+                .await
+                .map_err(|e| AuthError::StoreError(format!("Falha ao aplicar credencial atomicamente: {e}")))?;
 
             Ok(())
         })
