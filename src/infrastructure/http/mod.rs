@@ -58,6 +58,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/logout", post(logout_handler).get(logout_handler))
         .route("/api/auth/login_start", get(login_start_handler))
         .route("/api/auth/login_finish", post(login_finish_handler))
+        .route("/api/auth/qr_start", get(qr_start_handler))
+        .route("/api/auth/qr_poll", get(qr_poll_handler))
+        .route("/qr-login", get(qr_login_page))
+        .route("/api/auth/qr_mobile_start", get(qr_mobile_start_handler))
+        .route("/api/auth/qr_mobile_finish", post(qr_mobile_finish_handler))
         .route("/register", get(register_page))
         .route("/api/auth/register_start", get(register_start_handler))
         .route("/api/auth/register_finish", post(register_finish_handler))
@@ -272,27 +277,163 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
         {warning_box}
 
-        <p class="text-sm text-slate-300/90 leading-relaxed mb-6 font-sans">
-            {description}
-        </p>
+        <!-- Segmented Tab Switcher -->
+        <div class="grid grid-cols-2 gap-1 p-1 bg-[#07090e] rounded-lg border border-white/[0.08] mb-6">
+            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]">
+                <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                <span>{tab_local}</span>
+            </button>
+            <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                <span>{tab_qr}</span>
+            </button>
+        </div>
 
         <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
 
-        <button 
-            id="login-btn"
-            onclick="startLogin()"
-            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
-            <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-            <span>{btn_text}</span>
-        </button>
+        <!-- View 1: Local Passkey -->
+        <div id="view-local" class="space-y-4">
+            <p class="text-sm text-slate-300/90 leading-relaxed font-sans mb-6">
+                {description}
+            </p>
+
+            <button 
+                id="login-btn"
+                onclick="startLogin()"
+                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
+                <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                <span>{btn_text}</span>
+            </button>
+        </div>
+
+        <!-- View 2: QR Code Mobile Key -->
+        <div id="view-qr" class="hidden flex flex-col items-center text-center space-y-4">
+            <p class="text-xs text-slate-300 font-sans leading-relaxed">
+                {qr_desc}
+            </p>
+
+            <!-- QR Box with scanning brackets -->
+            <div class="relative p-3 bg-white rounded-xl shadow-2xl border border-white/20 inline-block">
+                <div id="qr-container" class="w-[200px] h-[200px] flex items-center justify-center">
+                    <div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <div class="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-blue-500"></div>
+                <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-blue-500"></div>
+                <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-blue-500"></div>
+                <div class="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-blue-500"></div>
+            </div>
+
+            <!-- Live Status Bar -->
+            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-[#07090e] border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
+                <span id="qr-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="qr-status-text">{qr_waiting}</span>
+            </div>
+
+            <button type="button" onclick="loadQrSession()" class="text-xs font-mono text-slate-400 hover:text-white transition flex items-center gap-1.5 py-1.5 px-3 rounded bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>{qr_reload}</span>
+            </button>
+        </div>
 
         <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
             <span>FIDO2 / PASSKEY</span>
-            <span>HARDWARE SECURED</span>
+            <span>SMARTPHONE & KEY SUPPORT</span>
         </div>
     </div>
 
     <script>
+    let currentQrId = null;
+    let qrPollTimer = null;
+
+    function switchLoginTab(tab) {{
+        const btnLocal = document.getElementById('tab-btn-local');
+        const btnQr = document.getElementById('tab-btn-qr');
+        const viewLocal = document.getElementById('view-local');
+        const viewQr = document.getElementById('view-qr');
+        const errDiv = document.getElementById('error-msg');
+        errDiv.classList.add('hidden');
+
+        if (tab === 'local') {{
+            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]";
+            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
+            viewLocal.classList.remove('hidden');
+            viewQr.classList.add('hidden');
+            stopQrPolling();
+        }} else {{
+            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-white/[0.08] shadow-sm flex items-center justify-center gap-1.5 border border-white/[0.06]";
+            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
+            viewQr.classList.remove('hidden');
+            viewLocal.classList.add('hidden');
+            if (!currentQrId) {{
+                loadQrSession();
+            }} else {{
+                startQrPolling();
+            }}
+        }}
+    }}
+
+    async function loadQrSession() {{
+        stopQrPolling();
+        const qrContainer = document.getElementById('qr-container');
+        const statusText = document.getElementById('qr-status-text');
+        const statusDot = document.getElementById('qr-status-dot');
+        qrContainer.innerHTML = '<div class="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>';
+        statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+        statusText.innerText = '{qr_waiting}';
+
+        try {{
+            const origin = window.location.origin;
+            const res = await fetch(`{base_path}/api/auth/qr_start?origin=${{encodeURIComponent(origin)}}`);
+            if (!res.ok) throw new Error("Falha ao gerar QR Code");
+            const data = await res.json();
+            currentQrId = data.qr_id;
+            qrContainer.innerHTML = data.svg;
+            startQrPolling();
+        }} catch (e) {{
+            qrContainer.innerHTML = '<span class="text-xs text-rose-500 font-mono">Erro ao carregar</span>';
+        }}
+    }}
+
+    function stopQrPolling() {{
+        if (qrPollTimer) {{
+            clearInterval(qrPollTimer);
+            qrPollTimer = null;
+        }}
+    }}
+
+    function startQrPolling() {{
+        stopQrPolling();
+        if (!currentQrId) return;
+
+        qrPollTimer = setInterval(async () => {{
+            try {{
+                const res = await fetch(`{base_path}/api/auth/qr_poll?id=${{currentQrId}}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const statusText = document.getElementById('qr-status-text');
+                const statusDot = document.getElementById('qr-status-dot');
+
+                if (data.status === 'approved') {{
+                    stopQrPolling();
+                    statusDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                    statusText.innerText = '{qr_approved}';
+                    setTimeout(() => {{
+                        window.location.href = '{target_root}';
+                    }}, 400);
+                }} else if (data.status === 'scanned') {{
+                    statusDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-ping";
+                    statusText.innerText = '{qr_scanned}';
+                }} else if (data.status === 'expired') {{
+                    stopQrPolling();
+                    statusDot.className = "w-2 h-2 rounded-full bg-amber-400";
+                    statusText.innerText = '{qr_expired}';
+                }}
+            }} catch (e) {{
+                console.error("Poll error", e);
+            }}
+        }}, 1500);
+    }}
+
     async function startLogin() {{
         const btn = document.getElementById('login-btn');
         const errDiv = document.getElementById('error-msg');
@@ -349,6 +490,14 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         start_error = i18n.login.start_error,
         auth_error = i18n.login.auth_error,
         default_error = i18n.login.default_error,
+        tab_local = i18n.login.tab_local,
+        tab_qr = i18n.login.tab_qr,
+        qr_desc = i18n.login.qr_desc,
+        qr_waiting = i18n.login.qr_waiting,
+        qr_scanned = i18n.login.qr_scanned,
+        qr_approved = i18n.login.qr_approved,
+        qr_expired = i18n.login.qr_expired,
+        qr_reload = i18n.login.qr_reload,
         base_path = state.base_path,
         target_root = target_root,
         next_lang = next_lang,
@@ -414,6 +563,401 @@ async fn logout_handler(jar: SignedCookieJar, State(state): State<AppState>) -> 
     let jar = jar.remove(remove_cookie);
     let target = format!("{}/login", state.base_path);
     (jar, Redirect::to(&target)).into_response()
+}
+
+// ==========================================
+// AUTENTICAÇÃO VIA QR CODE (SMARTPHONE COMO CHAVE)
+// ==========================================
+
+#[derive(Deserialize)]
+struct QrStartQuery {
+    origin: Option<String>,
+}
+
+#[derive(Serialize)]
+struct QrStartResponse {
+    qr_id: Uuid,
+    qr_url: String,
+    svg: String,
+}
+
+async fn qr_start_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Query(query): Query<QrStartQuery>,
+) -> Response {
+    let qr_id = state.auth_service.create_qr_session().await;
+
+    let origin = query.origin.filter(|o| !o.is_empty()).unwrap_or_else(|| {
+        let proto = headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("http");
+        let host = headers
+            .get("x-forwarded-host")
+            .or_else(|| headers.get("host"))
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("localhost");
+        format!("{proto}://{host}")
+    });
+
+    let qr_url = if state.base_path.is_empty() {
+        format!("{origin}/qr-login?token={qr_id}")
+    } else {
+        format!("{origin}{}/qr-login?token={qr_id}", state.base_path)
+    };
+
+    let svg = match qrcode::QrCode::new(qr_url.as_bytes()) {
+        Ok(code) => code
+            .render()
+            .min_dimensions(200, 200)
+            .dark_color(qrcode::render::svg::Color("#090d16"))
+            .light_color(qrcode::render::svg::Color("#ffffff"))
+            .build(),
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, format!("QR generation error: {e}")).into_response();
+        }
+    };
+
+    Json(QrStartResponse { qr_id, qr_url, svg }).into_response()
+}
+
+#[derive(Deserialize)]
+struct QrPollQuery {
+    id: Option<Uuid>,
+}
+
+#[derive(Serialize)]
+struct QrPollResponse {
+    status: &'static str,
+}
+
+async fn qr_poll_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<QrPollQuery>,
+) -> Response {
+    let qr_id = match query.id {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Missing id").into_response(),
+    };
+
+    if let Some(now) = state.auth_service.consume_approved_qr_session(qr_id).await {
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        cookie.set_path("/");
+        cookie.set_http_only(true);
+        cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
+        cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+
+        let jar = jar.add(cookie);
+        return (jar, Json(QrPollResponse { status: "approved" })).into_response();
+    }
+
+    let status = state.auth_service.get_qr_status(qr_id).await;
+    let status_str = match status {
+        crate::application::auth_service::QrAuthStatus::Pending => "pending",
+        crate::application::auth_service::QrAuthStatus::Scanned => "scanned",
+        crate::application::auth_service::QrAuthStatus::Approved => "approved",
+        crate::application::auth_service::QrAuthStatus::Expired => "expired",
+    };
+
+    Json(QrPollResponse { status: status_str }).into_response()
+}
+
+async fn qr_login_page(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    let token_str = match query.token {
+        Some(t) => t,
+        None => return (StatusCode::BAD_REQUEST, "Token missing").into_response(),
+    };
+
+    let qr_id = match token_str.parse::<Uuid>() {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid token").into_response(),
+    };
+
+    let i18n_arc = resolve_i18n(&jar, &state);
+    let i18n = &*i18n_arc;
+
+    let status = state.auth_service.get_qr_status(qr_id).await;
+    if status == crate::application::auth_service::QrAuthStatus::Expired {
+        let html = format!(
+            r##"<!DOCTYPE html>
+<html lang="{lang}" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{page_title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {{
+        --bg-canvas: #07090e;
+        --bg-surface: #0d121d;
+      }}
+      body {{
+        background-color: var(--bg-canvas);
+        background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 24px 24px;
+      }}
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
+    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
+        <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mx-auto mb-4">
+            ⚠️
+        </div>
+        <h1 class="text-xl font-display font-bold text-white mb-2">{qr_expired}</h1>
+        <p class="text-xs text-slate-400 font-sans leading-relaxed mb-6">
+            Esta solicitação de acesso não é mais válida. Por favor, volte ao computador e recarregue o QR Code na tela de login.
+        </p>
+    </div>
+</body>
+</html>"##,
+            lang = i18n.lang,
+            page_title = i18n.login.mobile_title,
+            qr_expired = i18n.login.qr_expired,
+        );
+        return Html(html).into_response();
+    }
+
+    state.auth_service.mark_qr_scanned(qr_id).await;
+
+    let html = format!(
+        r##"<!DOCTYPE html>
+<html lang="{lang}" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{page_title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {{
+        darkMode: 'class',
+        theme: {{
+          extend: {{
+            fontFamily: {{
+              display: ['"Space Grotesk"', 'sans-serif'],
+              sans: ['"Inter"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            }}
+          }}
+        }}
+      }};
+    </script>
+    <style>
+      /* Hallmark · macrostructure: workbench · genre: modern-minimal · theme: cobalt-utilitarian · states: pass */
+      :root {{
+        --bg-canvas: #07090e;
+        --bg-surface: #0d121d;
+        --border-rule: rgba(255, 255, 255, 0.08);
+        --border-rule-hover: rgba(255, 255, 255, 0.16);
+      }}
+      body {{
+        background-color: var(--bg-canvas);
+        background-image: 
+          radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08) 0%, transparent 60%),
+          radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 100% 100%, 24px 24px;
+      }}
+      a:focus-visible, button:focus-visible {{
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+      }}
+    </style>
+    <script>{webauthn_script}</script>
+</head>
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
+    <div class="max-w-md w-full bg-[#0d121d]/95 border border-white/[0.08] rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        <!-- Top accent rule -->
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent"></div>
+
+        <!-- Telemetry & Header -->
+        <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
+            <div class="flex items-center gap-2 font-mono text-[11px] text-cyan-400">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                <span>SYS // MOBILE_SECURITY_KEY</span>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-slate-400 border border-white/[0.08]">FIDO2</span>
+        </div>
+
+        <div id="auth-box">
+            <div class="flex items-center gap-3.5 mb-6">
+                <div class="w-11 h-11 rounded-lg bg-blue-600/10 border border-blue-500/30 flex items-center justify-center font-display font-bold text-2xl text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)] shrink-0">
+                    狛
+                </div>
+                <div>
+                    <h1 class="text-xl font-display font-bold tracking-tight text-white">{mobile_title}</h1>
+                    <p class="text-xs text-slate-400 mt-0.5">{mobile_subtitle}</p>
+                </div>
+            </div>
+
+            <div class="p-3.5 rounded-lg bg-[#07090e] border border-white/[0.06] mb-6 text-xs font-mono text-slate-300 flex items-center gap-2.5">
+                <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                <span>Sessão de login pendente no computador</span>
+            </div>
+
+            <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
+
+            <button 
+                id="approve-btn"
+                onclick="startMobileApproval('{token}')"
+                class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-blue-400/30">
+                <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                <span>{mobile_btn}</span>
+            </button>
+        </div>
+
+        <div id="success-box" class="hidden text-center py-4">
+            <div class="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-3xl mx-auto mb-4 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+                ✓
+            </div>
+            <h2 class="text-lg font-display font-bold text-white mb-2">{mobile_success_title}</h2>
+            <p class="text-xs text-slate-300 font-sans leading-relaxed mb-6">{mobile_success_desc}</p>
+            <div class="py-2 px-3 rounded-lg bg-[#07090e] border border-white/[0.06] text-[11px] font-mono text-emerald-400 inline-block">
+                SESSÃO DESBLOQUEADA NO COMPUTADOR
+            </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            <span>FIDO2 / PASSKEY</span>
+            <span>SMARTPHONE KEY</span>
+        </div>
+    </div>
+
+    <script>
+    async function startMobileApproval(token) {{
+        const btn = document.getElementById('approve-btn');
+        const errDiv = document.getElementById('error-msg');
+        const authBox = document.getElementById('auth-box');
+        const successBox = document.getElementById('success-box');
+        errDiv.classList.add('hidden');
+        btn.disabled = true;
+        btn.innerText = '{waiting_passkey}';
+
+        try {{
+            const startRes = await fetch(`{base_path}/api/auth/qr_mobile_start?token=${{encodeURIComponent(token)}}`);
+            if (!startRes.ok) {{
+                const err = await startRes.text();
+                throw new Error(err || '{start_error}');
+            }}
+            const data = await startRes.json();
+            const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
+            if (opts.publicKey) {{
+                opts.publicKey.userVerification = "required";
+                delete opts.publicKey.extensions;
+                opts.publicKey.allowCredentials = [];
+            }}
+            const credential = await webauthnJSON.get(opts);
+
+            const finishRes = await fetch('{base_path}/api/auth/qr_mobile_finish', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ token, auth_id: data.auth_id, credential }})
+            }});
+
+            if (!finishRes.ok) {{
+                const err = await finishRes.text();
+                throw new Error(err || '{auth_error}');
+            }}
+
+            authBox.classList.add('hidden');
+            successBox.classList.remove('hidden');
+        }} catch (err) {{
+            console.error(err);
+            errDiv.innerText = err.message || '{default_error}';
+            errDiv.classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerText = '{mobile_btn}';
+        }}
+    }}
+    </script>
+</body>
+</html>"##,
+        lang = i18n.lang,
+        page_title = i18n.login.mobile_title,
+        mobile_title = i18n.login.mobile_title,
+        mobile_subtitle = i18n.login.mobile_subtitle,
+        mobile_btn = i18n.login.mobile_btn,
+        mobile_success_title = i18n.login.mobile_success_title,
+        mobile_success_desc = i18n.login.mobile_success_desc,
+        waiting_passkey = i18n.login.waiting_passkey,
+        start_error = i18n.login.start_error,
+        auth_error = i18n.login.auth_error,
+        default_error = i18n.login.default_error,
+        base_path = state.base_path,
+        token = token_str,
+        webauthn_script = WEBAUTHN_JSON_SCRIPT,
+    );
+
+    Html(html).into_response()
+}
+
+async fn qr_mobile_start_handler(
+    State(state): State<AppState>,
+    Query(query): Query<TokenQuery>,
+) -> Response {
+    let token_str = match query.token {
+        Some(t) => t,
+        None => return (StatusCode::BAD_REQUEST, "Token missing").into_response(),
+    };
+    let qr_id = match token_str.parse::<Uuid>() {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid token").into_response(),
+    };
+    let status = state.auth_service.get_qr_status(qr_id).await;
+    if status == crate::application::auth_service::QrAuthStatus::Expired {
+        return (StatusCode::BAD_REQUEST, "QR session expired").into_response();
+    }
+
+    state.auth_service.mark_qr_scanned(qr_id).await;
+
+    match state.auth_service.start_authentication().await {
+        Ok((auth_id, challenge)) => Json(LoginStartResponse { auth_id, challenge }).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_localized(&state.i18n)).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct QrMobileFinishPayload {
+    token: String,
+    auth_id: Uuid,
+    credential: PublicKeyCredential,
+}
+
+async fn qr_mobile_finish_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<QrMobileFinishPayload>,
+) -> Response {
+    let qr_id = match payload.token.parse::<Uuid>() {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid token").into_response(),
+    };
+
+    let status = state.auth_service.get_qr_status(qr_id).await;
+    if status == crate::application::auth_service::QrAuthStatus::Expired {
+        return (StatusCode::BAD_REQUEST, "QR session expired").into_response();
+    }
+
+    match state.auth_service.finish_authentication(payload.auth_id, &payload.credential).await {
+        Ok(_) => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            state.auth_service.approve_qr_session(qr_id, now).await;
+            (StatusCode::OK, "Approved").into_response()
+        }
+        Err(e) => (StatusCode::UNAUTHORIZED, e.to_localized(&state.i18n)).into_response(),
+    }
 }
 
 // ==========================================
@@ -1382,5 +1926,90 @@ mod tests {
             .unwrap();
         let res_root = router.oneshot(req_root).await.unwrap();
         assert_eq!(res_root.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_qr_code_authentication_flow() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service: auth_service.clone(),
+            cookie_key,
+            i18n,
+            base_path: String::new(),
+        };
+
+        let router = create_router(state);
+
+        // 1. Iniciar sessão QR
+        let req_start = Request::builder()
+            .uri("/api/auth/qr_start?origin=http://localhost:3000")
+            .body(Body::empty())
+            .unwrap();
+        let res_start = router.clone().oneshot(req_start).await.unwrap();
+        assert_eq!(res_start.status(), StatusCode::OK);
+        let body_bytes = to_bytes(res_start.into_body(), usize::MAX).await.unwrap();
+        let start_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        let qr_id_str = start_json["qr_id"].as_str().unwrap();
+        let qr_id: Uuid = qr_id_str.parse().unwrap();
+        let qr_url = start_json["qr_url"].as_str().unwrap();
+        let svg = start_json["svg"].as_str().unwrap();
+        assert!(qr_url.contains("/qr-login?token="));
+        assert!(svg.contains("<svg"));
+
+        // 2. Polling enquanto pendente
+        let req_poll1 = Request::builder()
+            .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let res_poll1 = router.clone().oneshot(req_poll1).await.unwrap();
+        assert_eq!(res_poll1.status(), StatusCode::OK);
+        let poll1_bytes = to_bytes(res_poll1.into_body(), usize::MAX).await.unwrap();
+        let poll1_json: serde_json::Value = serde_json::from_slice(&poll1_bytes).unwrap();
+        assert_eq!(poll1_json["status"], "pending");
+
+        // 3. Celular acessa a página do QR code
+        let req_mobile = Request::builder()
+            .uri(format!("/qr-login?token={qr_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let res_mobile = router.clone().oneshot(req_mobile).await.unwrap();
+        assert_eq!(res_mobile.status(), StatusCode::OK);
+
+        // 4. Polling agora deve retornar "scanned"
+        let req_poll2 = Request::builder()
+            .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let res_poll2 = router.clone().oneshot(req_poll2).await.unwrap();
+        let poll2_bytes = to_bytes(res_poll2.into_body(), usize::MAX).await.unwrap();
+        let poll2_json: serde_json::Value = serde_json::from_slice(&poll2_bytes).unwrap();
+        assert_eq!(poll2_json["status"], "scanned");
+
+        // 5. Celular aprova o login com biometria
+        let now = 1700000000u64;
+        assert!(auth_service.approve_qr_session(qr_id, now).await);
+
+        // 6. Polling detecta aprovação e emite cookie de sessão
+        let req_poll3 = Request::builder()
+            .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let res_poll3 = router.oneshot(req_poll3).await.unwrap();
+        assert_eq!(res_poll3.status(), StatusCode::OK);
+        let cookie_header = res_poll3.headers().get("set-cookie").unwrap().to_str().unwrap();
+        assert!(cookie_header.contains("komainu_session="));
+        let poll3_bytes = to_bytes(res_poll3.into_body(), usize::MAX).await.unwrap();
+        let poll3_json: serde_json::Value = serde_json::from_slice(&poll3_bytes).unwrap();
+        assert_eq!(poll3_json["status"], "approved");
     }
 }

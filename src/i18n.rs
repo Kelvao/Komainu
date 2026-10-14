@@ -38,7 +38,48 @@ pub struct LoginTranslations {
     pub start_error: String,
     pub auth_error: String,
     pub default_error: String,
+    #[serde(default = "default_tab_local")]
+    pub tab_local: String,
+    #[serde(default = "default_tab_qr")]
+    pub tab_qr: String,
+    #[serde(default = "default_qr_desc")]
+    pub qr_desc: String,
+    #[serde(default = "default_qr_waiting")]
+    pub qr_waiting: String,
+    #[serde(default = "default_qr_scanned")]
+    pub qr_scanned: String,
+    #[serde(default = "default_qr_approved")]
+    pub qr_approved: String,
+    #[serde(default = "default_qr_expired")]
+    pub qr_expired: String,
+    #[serde(default = "default_qr_reload")]
+    pub qr_reload: String,
+    #[serde(default = "default_mobile_title")]
+    pub mobile_title: String,
+    #[serde(default = "default_mobile_subtitle")]
+    pub mobile_subtitle: String,
+    #[serde(default = "default_mobile_btn")]
+    pub mobile_btn: String,
+    #[serde(default = "default_mobile_success_title")]
+    pub mobile_success_title: String,
+    #[serde(default = "default_mobile_success_desc")]
+    pub mobile_success_desc: String,
 }
+
+fn default_tab_local() -> String { "Neste dispositivo".to_string() }
+fn default_tab_qr() -> String { "Celular (QR Code)".to_string() }
+fn default_qr_desc() -> String { "Aponte a câmera do seu smartphone para o QR Code para usar o celular como chave de acesso.".to_string() }
+fn default_qr_waiting() -> String { "Aguardando leitura do QR Code pelo celular...".to_string() }
+fn default_qr_scanned() -> String { "Celular conectado! Confirme a biometria no smartphone...".to_string() }
+fn default_qr_approved() -> String { "Acesso autorizado! Redirecionando...".to_string() }
+fn default_qr_expired() -> String { "QR Code expirado. Clique para recarregar.".to_string() }
+fn default_qr_reload() -> String { "Gerar novo QR Code".to_string() }
+fn default_mobile_title() -> String { "Autorizar Login no Computador".to_string() }
+fn default_mobile_subtitle() -> String { "Use sua biometria ou passkey para desbloquear a sessão no PC.".to_string() }
+fn default_mobile_btn() -> String { "Liberar Acesso no PC".to_string() }
+fn default_mobile_success_title() -> String { "Acesso Liberado com Sucesso!".to_string() }
+fn default_mobile_success_desc() -> String { "O login no computador foi confirmado. Você já pode fechar esta aba.".to_string() }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterTranslations {

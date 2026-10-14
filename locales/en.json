@@ -22,7 +22,20 @@
     "waiting_passkey": "Waiting for Passkey...",
     "start_error": "Failed to initiate login",
     "auth_error": "Failed to authenticate Passkey",
-    "default_error": "Error during authentication."
+    "default_error": "Error during authentication.",
+    "tab_local": "This device",
+    "tab_qr": "Phone (QR Code)",
+    "qr_desc": "Scan the QR code with your smartphone camera to use your phone as an access key.",
+    "qr_waiting": "Waiting for smartphone to scan QR code...",
+    "qr_scanned": "Phone connected! Confirm biometrics on your phone...",
+    "qr_approved": "Access approved! Redirecting...",
+    "qr_expired": "QR code expired. Click to reload.",
+    "qr_reload": "Generate new QR Code",
+    "mobile_title": "Authorize PC Login",
+    "mobile_subtitle": "Use your biometrics or passkey to unlock your PC session.",
+    "mobile_btn": "Grant Access on PC",
+    "mobile_success_title": "Access Granted Successfully!",
+    "mobile_success_desc": "Login on PC has been confirmed. You may now close this tab."
   },
   "register": {
     "page_title": "Register Passkey - Komainu",

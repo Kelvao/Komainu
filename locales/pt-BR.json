@@ -22,7 +22,20 @@
     "waiting_passkey": "Aguardando Passkey...",
     "start_error": "Erro ao iniciar login",
     "auth_error": "Falha ao autenticar Passkey",
-    "default_error": "Erro durante a autenticação."
+    "default_error": "Erro durante a autenticação.",
+    "tab_local": "Neste dispositivo",
+    "tab_qr": "Celular (QR Code)",
+    "qr_desc": "Aponte a câmera do seu smartphone para o QR Code para usar o celular como chave de acesso.",
+    "qr_waiting": "Aguardando leitura do QR Code pelo celular...",
+    "qr_scanned": "Celular conectado! Confirme a biometria no smartphone...",
+    "qr_approved": "Acesso autorizado! Redirecionando...",
+    "qr_expired": "QR Code expirado. Clique para recarregar.",
+    "qr_reload": "Gerar novo QR Code",
+    "mobile_title": "Autorizar Login no Computador",
+    "mobile_subtitle": "Use sua biometria ou passkey para desbloquear a sessão no PC.",
+    "mobile_btn": "Liberar Acesso no PC",
+    "mobile_success_title": "Acesso Liberado com Sucesso!",
+    "mobile_success_desc": "O login no computador foi confirmado. Você já pode fechar esta aba."
   },
   "register": {
     "page_title": "Registrar Passkey - Komainu",

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,12 +19,28 @@ fn prune_expired<T>(map: &mut HashMap<Uuid, (Instant, T)>) {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QrAuthStatus {
+    Pending,
+    Scanned,
+    Approved,
+    Expired,
+}
+
+#[derive(Debug, Clone)]
+pub struct QrAuthState {
+    pub created_at: Instant,
+    pub status: QrAuthStatus,
+    pub session_admin_ts: Option<u64>,
+}
+
 pub struct AuthService {
     webauthn: Arc<Webauthn>,
     store: Arc<dyn CredentialStorePort>,
     active_reg_token: Arc<Mutex<Option<String>>>,
     reg_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyRegistration)>>>,
     auth_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyAuthentication)>>>,
+    qr_states: Arc<Mutex<HashMap<Uuid, QrAuthState>>>,
 }
 
 impl AuthService {
@@ -43,6 +60,7 @@ impl AuthService {
             active_reg_token: Arc::new(Mutex::new(None)),
             reg_states: Arc::new(Mutex::new(HashMap::new())),
             auth_states: Arc::new(Mutex::new(HashMap::new())),
+            qr_states: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -145,4 +163,71 @@ impl AuthService {
 
         Ok(())
     }
+
+    pub async fn create_qr_session(&self) -> Uuid {
+        let qr_id = Uuid::new_v4();
+        let mut states = self.qr_states.lock().await;
+        let now = Instant::now();
+        states.retain(|_, s| now.duration_since(s.created_at).as_secs() < STATE_TTL_SECS);
+        if states.len() >= MAX_PENDING_STATES {
+            states.clear();
+        }
+        states.insert(qr_id, QrAuthState {
+            created_at: now,
+            status: QrAuthStatus::Pending,
+            session_admin_ts: None,
+        });
+        qr_id
+    }
+
+    pub async fn get_qr_status(&self, qr_id: Uuid) -> QrAuthStatus {
+        let states = self.qr_states.lock().await;
+        if let Some(state) = states.get(&qr_id) {
+            if Instant::now().duration_since(state.created_at).as_secs() >= STATE_TTL_SECS {
+                QrAuthStatus::Expired
+            } else {
+                state.status
+            }
+        } else {
+            QrAuthStatus::Expired
+        }
+    }
+
+    pub async fn mark_qr_scanned(&self, qr_id: Uuid) -> bool {
+        let mut states = self.qr_states.lock().await;
+        if let Some(state) = states.get_mut(&qr_id) {
+            if Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
+                if state.status == QrAuthStatus::Pending {
+                    state.status = QrAuthStatus::Scanned;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn approve_qr_session(&self, qr_id: Uuid, admin_ts: u64) -> bool {
+        let mut states = self.qr_states.lock().await;
+        if let Some(state) = states.get_mut(&qr_id) {
+            if Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
+                state.status = QrAuthStatus::Approved;
+                state.session_admin_ts = Some(admin_ts);
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn consume_approved_qr_session(&self, qr_id: Uuid) -> Option<u64> {
+        let mut states = self.qr_states.lock().await;
+        if let Some(state) = states.get(&qr_id) {
+            if state.status == QrAuthStatus::Approved {
+                let ts = state.session_admin_ts;
+                states.remove(&qr_id);
+                return ts;
+            }
+        }
+        None
+    }
 }
+
