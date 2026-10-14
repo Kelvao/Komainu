@@ -4,9 +4,13 @@ use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 pub struct DockerAdapter {
     socket_path: String,
     docker: Option<Docker>,
+    prev_cpu: Mutex<HashMap<String, (u64, u64)>>,
 }
 
 impl DockerAdapter {
@@ -15,6 +19,7 @@ impl DockerAdapter {
         Self {
             socket_path: socket_path.to_string(),
             docker,
+            prev_cpu: Mutex::new(HashMap::new()),
         }
     }
 
@@ -66,9 +71,22 @@ impl ContainerPort for DockerAdapter {
                 if let Some(Ok(stats)) = stats_stream.next().await {
                     let mem_mb = stats.memory_stats.usage.map(|u| u / (1024 * 1024));
 
-                    let cpu_delta = stats.cpu_stats.cpu_usage.total_usage.saturating_sub(stats.precpu_stats.cpu_usage.total_usage);
-                    let sys_delta = stats.cpu_stats.system_cpu_usage.unwrap_or(0).saturating_sub(stats.precpu_stats.system_cpu_usage.unwrap_or(0));
+                    let cur_cpu = stats.cpu_stats.cpu_usage.total_usage;
+                    let cur_sys = stats.cpu_stats.system_cpu_usage.unwrap_or(0);
                     let online_cpus = stats.cpu_stats.online_cpus.unwrap_or(1);
+
+                    let (cpu_delta, sys_delta) = {
+                        let mut prev_map = self.prev_cpu.lock().unwrap_or_else(|e| e.into_inner());
+                        let deltas = if let Some(&(prev_c, prev_s)) = prev_map.get(&name) {
+                            (cur_cpu.saturating_sub(prev_c), cur_sys.saturating_sub(prev_s))
+                        } else {
+                            let precpu = stats.precpu_stats.cpu_usage.total_usage;
+                            let presys = stats.precpu_stats.system_cpu_usage.unwrap_or(0);
+                            (cur_cpu.saturating_sub(precpu), cur_sys.saturating_sub(presys))
+                        };
+                        prev_map.insert(name.clone(), (cur_cpu, cur_sys));
+                        deltas
+                    };
 
                     let cpu_pct = if sys_delta > 0 && cpu_delta > 0 {
                         (cpu_delta as f32 / sys_delta as f32) * (online_cpus as f32) * 100.0
