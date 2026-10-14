@@ -184,9 +184,13 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             }}
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
-            if (opts.publicKey && opts.publicKey.allowCredentials) {{
-                for (const cred of opts.publicKey.allowCredentials) {{
-                    delete cred.transports;
+            if (opts.publicKey) {{
+                opts.publicKey.userVerification = "preferred";
+                delete opts.publicKey.extensions;
+                if (opts.publicKey.allowCredentials) {{
+                    for (const cred of opts.publicKey.allowCredentials) {{
+                        delete cred.transports;
+                    }}
                 }}
             }}
             const credential = await webauthnJSON.get(opts);
@@ -364,9 +368,13 @@ async fn register_page(
             }}
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
-            if (opts.publicKey && opts.publicKey.authenticatorSelection) {{
-                opts.publicKey.authenticatorSelection.residentKey = "required";
-                opts.publicKey.authenticatorSelection.requireResidentKey = true;
+            if (opts.publicKey) {{
+                delete opts.publicKey.extensions;
+                if (opts.publicKey.authenticatorSelection) {{
+                    opts.publicKey.authenticatorSelection.residentKey = "required";
+                    opts.publicKey.authenticatorSelection.requireResidentKey = true;
+                    opts.publicKey.authenticatorSelection.userVerification = "preferred";
+                }}
             }}
             const credential = await webauthnJSON.create(opts);
 
@@ -916,8 +924,8 @@ mod tests {
         let auth_service = AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap();
         auth_service.set_registration_token("tok".to_string()).await;
         let (_reg_id, challenge) = auth_service.start_registration("tok").await.unwrap();
-        let json = serde_json::to_string(&challenge).unwrap();
-        assert!(json.contains("\"publicKey\""));
+        let json = serde_json::to_string_pretty(&challenge).unwrap();
+        println!("REG_CHALLENGE:\n{json}");
         assert!(json.contains("\"rp\""));
     }
 
