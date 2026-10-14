@@ -390,7 +390,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         return Redirect::to("/login").into_response();
     }
 
-    let fragment = render_dashboard_fragment(&state).await;
+    let fragment = render_dashboard_fragment(&state, None).await;
     let html = format!(
         r##"<!DOCTYPE html>
 <html lang="pt-BR" class="dark">
@@ -459,52 +459,63 @@ async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<Ap
         headers.insert("HX-Redirect", "/login".parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, "Sessão expirada").into_response();
     }
-    Html(render_dashboard_fragment(&state).await).into_response()
+    Html(render_dashboard_fragment(&state, None).await).into_response()
 }
 
 async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
     }
-    let _ = state.container_service.start().await;
-    Html(render_dashboard_fragment(&state).await).into_response()
+    let err = state.container_service.start().await.err().map(|e| e.to_string());
+    Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
 async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
     }
-    let _ = state.container_service.stop().await;
-    Html(render_dashboard_fragment(&state).await).into_response()
+    let err = state.container_service.stop().await.err().map(|e| e.to_string());
+    Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
 async fn container_restart_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
     }
-    let _ = state.container_service.restart().await;
-    Html(render_dashboard_fragment(&state).await).into_response()
+    let err = state.container_service.restart().await.err().map(|e| e.to_string());
+    Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
 async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
     }
-    let _ = state.container_service.update_image().await;
-    Html(render_dashboard_fragment(&state).await).into_response()
+    let err = state.container_service.update_image().await.err().map(|e| e.to_string());
+    Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
 async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         return (StatusCode::UNAUTHORIZED, "Não autorizado").into_response();
     }
-    let _ = state.container_service.rebuild().await;
-    Html(render_dashboard_fragment(&state).await).into_response()
+    let err = state.container_service.rebuild().await.err().map(|e| e.to_string());
+    Html(render_dashboard_fragment(&state, err).await).into_response()
 }
 
-async fn render_dashboard_fragment(state: &AppState) -> String {
+async fn render_dashboard_fragment(state: &AppState, action_error: Option<String>) -> String {
     let status_res = state.container_service.status().await;
     let metrics = state.system_service.get_metrics().await;
+
+    let error_banner = match action_error {
+        Some(e) => format!(
+            r##"<div class="lg:col-span-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center gap-2">
+                <svg class="w-5 h-5 fill-current shrink-0" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+                <span><strong>Falha na operação:</strong> {}</span>
+            </div>"##,
+            e
+        ),
+        None => String::new(),
+    };
 
     let (status_badge, image_name, uptime_str, container_cpu_str, container_ram_str) = match &status_res {
         Ok(status) => {
@@ -556,6 +567,7 @@ async fn render_dashboard_fragment(state: &AppState) -> String {
 
     format!(
         r##"<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {error_banner}
     <!-- Card do Container -->
     <div class="lg:col-span-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
@@ -666,6 +678,7 @@ async fn render_dashboard_fragment(state: &AppState) -> String {
         </div>
     </div>
 </div>"##,
+        error_banner = error_banner,
         status_badge = status_badge,
         image_name = image_name,
         uptime_str = uptime_str,
@@ -778,11 +791,15 @@ mod tests {
             cookie_key,
         };
 
-        let fragment = render_dashboard_fragment(&state).await;
+        let fragment = render_dashboard_fragment(&state, None).await;
         assert!(fragment.contains("Instância Vaultwarden"));
         assert!(fragment.contains("Uso de CPU"));
         assert!(fragment.contains("Memória RAM"));
         assert!(fragment.contains("Armazenamento"));
         assert!(fragment.contains("vaultwarden:test"));
+
+        let fragment_err = render_dashboard_fragment(&state, Some("Falha ao iniciar".to_string())).await;
+        assert!(fragment_err.contains("Falha na operação:"));
+        assert!(fragment_err.contains("Falha ao iniciar"));
     }
 }
