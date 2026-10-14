@@ -48,6 +48,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if args.register {
+        if auth_service.has_admin().await && !args.force {
+            eprintln!("\n========================================================");
+            eprintln!("        KOMAINU - REGISTRO BLOQUEADO                   ");
+            eprintln!("========================================================");
+            eprintln!("Já existe uma Passkey de administrador cadastrada!");
+            eprintln!("O Komainu é restrito a um único administrador.");
+            eprintln!("Para substituir a Passkey existente, execute com --force:");
+            eprintln!("  ./komainu --register --force\n");
+            eprintln!("========================================================\n");
+            return Ok(());
+        }
+
         let token = Uuid::new_v4().to_string();
         auth_service.set_registration_token(token.clone()).await;
 

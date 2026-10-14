@@ -40,8 +40,7 @@ impl CredentialStorePort for FileCredentialStore {
 
     fn save_credential(&self, passkey: Passkey) -> BoxFuture<'_, Result<(), AuthError>> {
         Box::pin(async move {
-            let mut keys = self.load_credentials().await?;
-            keys.push(passkey);
+            let keys = vec![passkey]; // Exclusivo para um único administrador
 
             let json = serde_json::to_string_pretty(&keys)
                 .map_err(|e| AuthError::StoreError(format!("Falha ao serializar credencial: {e}")))?;
