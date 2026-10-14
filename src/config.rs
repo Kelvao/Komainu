@@ -26,6 +26,16 @@ impl Config {
         let session_secret = env::var("SESSION_SECRET")
             .unwrap_or_else(|_| "dev_insecure_secret_key_change_in_prod_1234567890".to_string());
 
+        if session_secret == "dev_insecure_secret_key_change_in_prod_1234567890" {
+            tracing::warn!(
+                "⚠️  AVISO DE SEGURANÇA: Usando SESSION_SECRET padrão inseguro! Configure a variável de ambiente SESSION_SECRET com uma chave aleatória de pelo menos 32 bytes para produção."
+            );
+        } else if session_secret.len() < 32 {
+            tracing::warn!(
+                "⚠️  AVISO DE SEGURANÇA: SESSION_SECRET possui menos de 32 caracteres. Recomenda-se gerar uma chave aleatória mais longa."
+            );
+        }
+
         let vw_container_name = env::var("VW_CONTAINER_NAME")
             .unwrap_or_else(|_| "vaultwarden".to_string());
 
@@ -46,5 +56,19 @@ impl Config {
             rp_origin,
             credentials_path,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_from_env_default() {
+        let config = Config::from_env();
+        assert!(config.is_ok());
+        let c = config.unwrap();
+        assert_eq!(c.server_port, 3000);
+        assert_eq!(c.rp_id, "localhost");
     }
 }
