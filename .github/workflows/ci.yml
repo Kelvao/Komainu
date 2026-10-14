@@ -1,0 +1,60 @@
+name: CI & Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain & cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run test suite
+        run: cargo test --verbose
+
+  build:
+    name: Build & Compress Binary
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain & cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Compress binary with UPX
+        run: upx --best --lzma target/release/komainu
+
+      - name: Verify compressed binary
+        run: |
+          ls -lh target/release/komainu
+          file target/release/komainu
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: komainu-linux-x86_64
+          path: target/release/komainu
+          if-no-files-found: error
+
