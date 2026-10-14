@@ -55,6 +55,12 @@ impl CredentialStorePort for FileCredentialStore {
                 .await
                 .map_err(|e| AuthError::StoreError(format!("Falha ao salvar credencial: {e}")))?;
 
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600)).await;
+            }
+
             Ok(())
         })
     }
