@@ -1,5 +1,5 @@
 use crate::domain::container::{BoxFuture, ContainerError, ContainerPort, ContainerState, ContainerStatus};
-use bollard::container::{CreateContainerOptions, StatsOptions};
+use bollard::container::{CreateContainerOptions, RenameContainerOptions, StatsOptions};
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -193,11 +193,13 @@ impl ContainerPort for DockerAdapter {
             // 3. Parar container se estiver rodando
             let _ = docker.stop_container(&name, None).await;
 
-            // 4. Remover container antigo
+            // 4. Renomear container antigo para backup temporário em vez de destruí-lo prematuramente
+            let backup_name = format!("{}_rebuild_bak", name);
+            let _ = docker.remove_container(&backup_name, None).await;
             docker
-                .remove_container(&name, None)
+                .rename_container(&name, RenameContainerOptions { name: backup_name.clone() })
                 .await
-                .map_err(|e| ContainerError::RebuildFailed(format!("Failed to remove container: {e}")))?;
+                .map_err(|e| ContainerError::RebuildFailed(format!("Failed to rename container to backup: {e}")))?;
 
             let networking_config = inspect.network_settings.and_then(|ns| {
                 ns.networks.map(|networks| bollard::container::NetworkingConfig {
@@ -206,7 +208,6 @@ impl ContainerPort for DockerAdapter {
             });
 
             // 5. Recriar com as mesmas configurações de volume, ambiente e rede
-
             let create_config = bollard::container::Config {
                 image: inspect.config.as_ref().and_then(|c| c.image.clone()),
                 env: inspect.config.as_ref().and_then(|c| c.env.clone()),
@@ -225,16 +226,24 @@ impl ContainerPort for DockerAdapter {
                 platform: None,
             });
 
-            docker
-                .create_container(create_options, create_config)
-                .await
-                .map_err(|e| ContainerError::RebuildFailed(format!("Failed to recreate container: {e}")))?;
+            if let Err(e) = docker.create_container(create_options, create_config).await {
+                // Rollback: restaurar nome do backup e reiniciar
+                let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
+                let _ = docker.start_container::<String>(&name, None).await;
+                return Err(ContainerError::RebuildFailed(format!("Recreation failed (rolled back): {e}")));
+            }
 
-            // 5. Iniciar o novo container
-            docker
-                .start_container::<String>(&name, None)
-                .await
-                .map_err(|e| ContainerError::StartFailed(e.to_string()))?;
+            // 6. Iniciar o novo container
+            if let Err(e) = docker.start_container::<String>(&name, None).await {
+                // Rollback: remover novo container quebrado, restaurar backup e reiniciar
+                let _ = docker.remove_container(&name, None).await;
+                let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
+                let _ = docker.start_container::<String>(&name, None).await;
+                return Err(ContainerError::StartFailed(format!("Start failed (rolled back): {e}")));
+            }
+
+            // 7. Sucesso confirmado: remover backup com segurança
+            let _ = docker.remove_container(&backup_name, None).await;
 
             Ok(())
         })
