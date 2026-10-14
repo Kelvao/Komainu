@@ -184,6 +184,11 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             }}
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
+            if (opts.publicKey && opts.publicKey.allowCredentials) {{
+                for (const cred of opts.publicKey.allowCredentials) {{
+                    delete cred.transports;
+                }}
+            }}
             const credential = await webauthnJSON.get(opts);
 
             const finishRes = await fetch('{base_path}/api/auth/login_finish', {{
