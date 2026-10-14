@@ -359,6 +359,9 @@ async fn register_page(
             }}
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
+            if (opts.publicKey && opts.publicKey.authenticatorSelection) {{
+                opts.publicKey.authenticatorSelection.residentKey = "preferred";
+            }}
             const credential = await webauthnJSON.create(opts);
 
             const finishRes = await fetch(`{base_path}/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
