@@ -183,7 +183,8 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                 throw new Error(err || '{start_error}');
             }}
             const data = await startRes.json();
-            const credential = await webauthnJSON.get({{ publicKey: data.challenge }});
+            const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
+            const credential = await webauthnJSON.get(opts);
 
             const finishRes = await fetch('{base_path}/api/auth/login_finish', {{
                 method: 'POST',
@@ -357,7 +358,8 @@ async fn register_page(
                 throw new Error(err || '{start_error}');
             }}
             const data = await startRes.json();
-            const credential = await webauthnJSON.create({{ publicKey: data.challenge }});
+            const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
+            const credential = await webauthnJSON.create(opts);
 
             const finishRes = await fetch(`{base_path}/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
                 method: 'POST',
@@ -898,6 +900,16 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_handler() {
         assert_eq!(health_check().await, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_challenge_serialization() {
+        let auth_service = AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap();
+        auth_service.set_registration_token("tok".to_string()).await;
+        let (_reg_id, challenge) = auth_service.start_registration("tok").await.unwrap();
+        let json = serde_json::to_string(&challenge).unwrap();
+        assert!(json.contains("\"publicKey\""));
+        assert!(json.contains("\"rp\""));
     }
 
     #[tokio::test]
