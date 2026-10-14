@@ -360,7 +360,8 @@ async fn register_page(
             const data = await startRes.json();
             const opts = data.challenge.publicKey ? data.challenge : {{ publicKey: data.challenge }};
             if (opts.publicKey && opts.publicKey.authenticatorSelection) {{
-                opts.publicKey.authenticatorSelection.residentKey = "preferred";
+                opts.publicKey.authenticatorSelection.residentKey = "required";
+                opts.publicKey.authenticatorSelection.requireResidentKey = true;
             }}
             const credential = await webauthnJSON.create(opts);
 
