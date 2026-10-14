@@ -125,13 +125,16 @@ async fn set_lang_handler(
     cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
     cookie.set_max_age(time::Duration::days(365));
 
-    let redirect_url = query.redirect.filter(|r| r.starts_with('/')).unwrap_or_else(|| {
-        if state.base_path.is_empty() {
-            "/".to_string()
-        } else {
-            format!("{}/", state.base_path)
-        }
-    });
+    let redirect_url = query
+        .redirect
+        .filter(|r| r.starts_with('/') && !r.starts_with("//"))
+        .unwrap_or_else(|| {
+            if state.base_path.is_empty() {
+                "/".to_string()
+            } else {
+                format!("{}/", state.base_path)
+            }
+        });
 
     (jar.add(cookie), Redirect::to(&redirect_url).into_response())
 }
@@ -1883,10 +1886,28 @@ mod tests {
             .uri("/set-lang?lang=pt-BR")
             .body(Body::empty())
             .unwrap();
-        let res_pt = router.oneshot(req_pt).await.unwrap();
+        let res_pt = router.clone().oneshot(req_pt).await.unwrap();
         assert_eq!(res_pt.status(), StatusCode::SEE_OTHER);
         let set_cookie_pt = res_pt.headers().get("set-cookie").unwrap().to_str().unwrap();
         assert!(set_cookie_pt.contains("komainu_lang="));
+
+        // Safe relative redirect
+        let req_safe = Request::builder()
+            .uri("/set-lang?lang=en&redirect=/dashboard")
+            .body(Body::empty())
+            .unwrap();
+        let res_safe = router.clone().oneshot(req_safe).await.unwrap();
+        assert_eq!(res_safe.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res_safe.headers().get("location").unwrap().to_str().unwrap(), "/dashboard");
+
+        // Malicious protocol-relative redirect rejected -> falls back to "/"
+        let req_evil = Request::builder()
+            .uri("/set-lang?lang=en&redirect=//evil.com")
+            .body(Body::empty())
+            .unwrap();
+        let res_evil = router.oneshot(req_evil).await.unwrap();
+        assert_eq!(res_evil.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res_evil.headers().get("location").unwrap().to_str().unwrap(), "/");
     }
 
     #[tokio::test]
