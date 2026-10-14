@@ -20,34 +20,38 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 **Komainu** solves this with a hyper-focused, single-binary management suite:
 - **Zero runtime dependencies**: Compiles into a single standalone executable (~1.1 MB with UPX compression).
 - **Passwordless Security**: Hardware-backed Passkey (WebAuthn/FIDO2) authentication only.
+- **Cross-Device Smartphone Key**: Log in on any PC by scanning a dynamic on-screen QR code with your smartphone camera and verifying biometrics on your phone.
 - **Zero Public Registration**: No web registration forms. The admin Passkey is registered strictly via CLI over SSH.
-- **Live Monitoring & Control**: Real-time host and container resource inspection paired with safe lifecycle controls (Start, Stop, Restart, Pull Update, Rebuild).
-- **Embedded UI**: Pure HTMX and Tailwind CSS rendered directly by the Rust binary — no Node.js, npm, or frontend build toolchains required.
+- **Live Dual-Layer Monitoring**: Real-time 2-second telemetry for both the host machine and the isolated container.
+- **Hallmark Utilitarian Interface**: Modern-minimal industrial cockpit design with Space Grotesk, Inter, and JetBrains Mono typography, dense telemetry gauges, and an integrated language switcher (PT/EN).
+- **Embedded UI**: Pure Axum + HTMX + Tailwind CSS embedded directly in the Rust binary — zero Node.js, npm, or frontend build toolchains.
 
 ---
 
 ## Key Features
 
-### 🛡️ Hardware-Backed Passkeys (WebAuthn / FIDO2)
-- Pure passwordless authentication using Touch ID, Face ID, YubiKeys, Windows Hello, or Android/iOS Passkeys.
-- Enforced single-administrator model: eliminates unauthorized privilege escalation or accidental multi-admin registrations.
-- State-of-the-art session security: tamper-proof encrypted cookies derived from your secret key using SHA-256.
+### 🛡️ Hardware-Backed Passkeys & Cross-Device QR Login
+- **Local Passkey Mode**: One-click passwordless login using Touch ID, Face ID, Windows Hello, or hardware security keys (YubiKey).
+- **Smartphone Key (QR Code Login)**: Log in securely on any desktop by scanning a dynamic QR code on screen with your smartphone camera. Authorize access with your phone's biometrics (Face ID/fingerprint), and the PC logs in automatically in real time.
+- **Enforced Single-Admin Model**: Eliminates privilege escalation and unauthorized multi-user registrations.
+- **Tamper-Proof Sessions**: Signed HTTP-only session cookies derived with SHA-512 and AES-GCM encryption.
+- **Dynamic Language Switcher**: Switch on the fly between English and Portuguese (`EN` / `PT`) via the navigation bar and login screen, persisted across sessions with signed cookies.
 
 ### 🔒 Zero Public Attack Surface Registration
-- Web registration routes are disabled by design.
+- Public web registration forms are disabled by default.
 - Admin registration is triggered exclusively on-demand via the CLI (`--register`).
-- Generates a cryptographically random, one-time registration token (5-minute TTL) alongside an interactive **ASCII QR code** directly in your terminal for instant mobile passkey enrollment over SSH.
+- Generates a cryptographically random, one-time registration token (5-minute TTL) alongside an interactive **terminal ASCII QR code** for instant mobile passkey enrollment over SSH.
 
 ### 🐳 Full Vaultwarden Container Lifecycle Management
-- **Status & Uptime**: Real-time status detection (`running`, `stopped`, `restarting`).
-- **One-Click Actions**: Start, stop, and restart with instant visual feedback.
-- **Image Updates**: Pull the latest image tag directly from the registry without terminal intervention.
-- **Seamless Container Rebuild**: Automatically pulls the newest image, stops and destroys the outdated container, and recreates it with identical port mappings, environment variables, volumes, and network settings.
+- **Status & Uptime**: Real-time container state detection (`running`, `stopped`, `restarting`).
+- **One-Click Controls**: Start, stop, and restart with tactile feedback.
+- **Image Updates**: Pull the newest image tag directly from Docker Hub or your registry.
+- **Seamless Container Rebuild**: Automatically pulls the latest image, destroys the outdated container, and recreates it with identical port mappings, environment variables, volumes, and network settings.
 
-### 📊 Real-Time Server & Container Monitoring
-- HTMX live polling every 5 seconds.
-- **Host Metrics**: Global CPU usage %, RAM utilization, and Total/Available disk space (offloaded to Tokio's blocking thread pool to prevent async stalls).
-- **Container Metrics**: Instantaneous container CPU % (with delta caching for Linux cgroups v2) and exact memory usage in megabytes.
+### 📊 Real-Time Dual-Layer Telemetry (2-Second Polling)
+- HTMX live polling every **2 seconds** without page reloads.
+- **Container Telemetry**: Isolated CPU usage % and exact RAM consumption in MB (with cgroups v2 delta calculation).
+- **Host Hardware Matrix**: Dedicated 3-column Bento grid reporting CPU Core load %, Physical RAM (Used/Total/Occupied %), and Disk Storage (Used/Total/Occupied %).
 
 ---
 
@@ -260,7 +264,9 @@ komainu.yourdomain.com {
 vaultwarden.yourdomain.com {
     redir /komainu /komainu/
 
-    handle /komainu/* {
+    # Strip prefix when proxying (or use 'handle /komainu/*' to preserve it;
+    # Komainu's dual routing supports both out of the box!)
+    handle_path /komainu/* {
         reverse_proxy 127.0.0.1:3000
     }
 
