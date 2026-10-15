@@ -9,6 +9,10 @@ pub struct SystemMetrics {
     pub cpu_usage_pct: f32,
     pub ram_used_mb: u64,
     pub ram_total_mb: u64,
+    #[serde(default)]
+    pub swap_used_mb: u64,
+    #[serde(default)]
+    pub swap_total_mb: u64,
     pub disk_used_gb: u64,
     pub disk_total_gb: u64,
 }

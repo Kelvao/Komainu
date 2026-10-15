@@ -53,17 +53,19 @@ fn read_cpu_ticks() -> Option<(u64, u64)> {
     Some((work, total))
 }
 
-fn read_mem_mb() -> (u64, u64) {
+fn read_mem_and_swap_mb() -> (u64, u64, u64, u64) {
     use std::io::Read;
     let mut file = match fs::File::open("/proc/meminfo") {
         Ok(f) => f,
-        Err(_) => return (0, 0),
+        Err(_) => return (0, 0, 0, 0),
     };
     let mut buf = [0u8; 2048];
     let n = file.read(&mut buf).unwrap_or(0);
     let text = std::str::from_utf8(&buf[..n]).unwrap_or_default();
     let mut total_kb = 0u64;
     let mut avail_kb = 0u64;
+    let mut swap_total_kb = 0u64;
+    let mut swap_free_kb = 0u64;
     for line in text.lines() {
         if let Some(val) = line.strip_prefix("MemTotal:") {
             if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
@@ -72,12 +74,21 @@ fn read_mem_mb() -> (u64, u64) {
         } else if let Some(val) = line.strip_prefix("MemAvailable:")
             && let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
                 avail_kb = num;
-            }
+        } else if let Some(val) = line.strip_prefix("SwapTotal:")
+            && let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+                swap_total_kb = num;
+        } else if let Some(val) = line.strip_prefix("SwapFree:")
+            && let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+                swap_free_kb = num;
+        }
     }
     let total_mb = total_kb / 1024;
     let used_mb = total_kb.saturating_sub(avail_kb) / 1024;
-    (total_mb, used_mb)
+    let swap_total_mb = swap_total_kb / 1024;
+    let swap_used_mb = swap_total_kb.saturating_sub(swap_free_kb) / 1024;
+    (total_mb, used_mb, swap_total_mb, swap_used_mb)
 }
+
 
 fn read_disk_space() -> (u64, u64) {
     #[cfg(unix)]
@@ -125,7 +136,7 @@ impl SystemMonitorPort for SysinfoAdapter {
                 }
             };
 
-            let (ram_total_mb, ram_used_mb) = read_mem_mb();
+            let (ram_total_mb, ram_used_mb, swap_total_mb, swap_used_mb) = read_mem_and_swap_mb();
 
             let cached_disk = {
                 let cache = self.disk_cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -156,6 +167,8 @@ impl SystemMonitorPort for SysinfoAdapter {
                 cpu_usage_pct,
                 ram_used_mb,
                 ram_total_mb,
+                swap_used_mb,
+                swap_total_mb,
                 disk_used_gb,
                 disk_total_gb,
             }
@@ -178,9 +191,10 @@ mod tests {
 
     #[test]
     fn test_read_cpu_and_mem() {
-        let (total_mb, used_mb) = read_mem_mb();
+        let (total_mb, used_mb, swap_total_mb, swap_used_mb) = read_mem_and_swap_mb();
         assert!(total_mb > 0);
         assert!(used_mb <= total_mb);
+        assert!(swap_used_mb <= swap_total_mb);
 
         let (used_gb, total_gb) = read_disk_space();
         assert!(total_gb > 0);

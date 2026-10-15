@@ -2381,6 +2381,30 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
 
     let is_running = matches!(status_res.as_ref().map(|s| &s.state), Ok(ContainerState::Running));
 
+    let swap_alert = if metrics.swap_total_mb == 0 {
+        if i18n.lang == "en" {
+            r#"<div class="mt-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs font-mono space-y-1">
+                <div class="flex items-center gap-2 font-semibold text-amber-300">
+                    <span>⚠️</span>
+                    <span>Performance Warning: No Swapfile detected (0 MB Swap)</span>
+                </div>
+                <p class="text-slate-300">On low-memory instances (e.g. 1 GB RAM on Oracle Cloud), creating a 1-2 GB swapfile prevents Vaultwarden crashes from the Linux OOM Killer. Run in host terminal:</p>
+                <code class="block bg-black/40 p-2 rounded border border-white/10 text-amber-200 select-all overflow-x-auto">sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile</code>
+            </div>"#
+        } else {
+            r#"<div class="mt-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs font-mono space-y-1">
+                <div class="flex items-center gap-2 font-semibold text-amber-300">
+                    <span>⚠️</span>
+                    <span>Aviso de Performance: Nenhum Swapfile detectado (0 MB Swap)</span>
+                </div>
+                <p class="text-slate-300">Em instâncias com pouca memória (ex: 1 GB RAM na Oracle Cloud), configurar 1 GB ou 2 GB de swap previne quedas do Vaultwarden pelo Linux OOM Killer. Execute no terminal:</p>
+                <code class="block bg-black/40 p-2 rounded border border-white/10 text-amber-200 select-all overflow-x-auto">sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile</code>
+            </div>"#
+        }
+    } else {
+        ""
+    };
+
     format!(
         r##"<div class="space-y-6">
     {error_banner}
@@ -2538,6 +2562,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 </div>
             </div>
         </div>
+        {swap_alert}
     </div>
 </div>"##,
         error_banner = error_banner,
@@ -2575,6 +2600,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
         disk_pct = if metrics.disk_total_gb > 0 { (metrics.disk_used_gb as f32 / metrics.disk_total_gb as f32) * 100.0 } else { 0.0 },
         host_label = i18n.metrics.host_label,
         occupied_suffix = i18n.metrics.occupied_suffix,
+        swap_alert = swap_alert,
     )
 }
 
@@ -2645,6 +2671,8 @@ mod tests {
                     cpu_usage_pct: 12.5,
                     ram_used_mb: 1024,
                     ram_total_mb: 4096,
+                    swap_used_mb: 0,
+                    swap_total_mb: 2048,
                     disk_used_gb: 20,
                     disk_total_gb: 100,
                 }
