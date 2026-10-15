@@ -75,6 +75,9 @@ mod tests {
         fn rebuild(&self, _name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
             Box::pin(async { Ok(()) })
         }
+        fn exec_command(&self, _name: &str, _cmd: Vec<String>) -> BoxFuture<'_, Result<String, ContainerError>> {
+            Box::pin(async { Ok("success".to_string()) })
+        }
     }
 
     #[tokio::test]

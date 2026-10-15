@@ -22,6 +22,10 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 futures-util = "0.3"
 openssl = { version = "0.10", features = ["vendored"] }
 time = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+cron = "0.15"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

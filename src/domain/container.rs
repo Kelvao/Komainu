@@ -34,6 +34,7 @@ pub enum ContainerError {
     RestartFailed(String),
     ImagePullFailed(String),
     RebuildFailed(String),
+    ExecFailed(String),
     Infrastructure(String),
 }
 
@@ -47,6 +48,7 @@ impl fmt::Display for ContainerError {
             Self::RestartFailed(msg) => write!(f, "Failed to restart container: {msg}"),
             Self::ImagePullFailed(msg) => write!(f, "Failed to pull image: {msg}"),
             Self::RebuildFailed(msg) => write!(f, "Failed to rebuild container: {msg}"),
+            Self::ExecFailed(msg) => write!(f, "Failed to execute command in container: {msg}"),
             Self::Infrastructure(msg) => write!(f, "Docker error: {msg}"),
         }
     }
@@ -64,6 +66,7 @@ impl ContainerError {
             Self::RestartFailed(msg) => format!("{}: {msg}", i18n.errors.container_restart_failed),
             Self::ImagePullFailed(msg) => format!("{}: {msg}", i18n.errors.image_pull_failed),
             Self::RebuildFailed(msg) => format!("{}: {msg}", i18n.errors.container_rebuild_failed),
+            Self::ExecFailed(msg) => format!("Exec failed: {msg}"),
             Self::Infrastructure(msg) => format!("{}: {msg}", i18n.errors.docker_generic),
         }
     }
@@ -77,6 +80,7 @@ pub trait ContainerPort: Send + Sync {
     fn restart(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>>;
     fn update_image(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>>;
     fn rebuild(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>>;
+    fn exec_command(&self, name: &str, cmd: Vec<String>) -> BoxFuture<'_, Result<String, ContainerError>>;
 }
 
 #[cfg(test)]

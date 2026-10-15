@@ -306,6 +306,49 @@ impl ContainerPort for DockerAdapter {
             Ok(())
         })
     }
+
+    fn exec_command(&self, name: &str, cmd: Vec<String>) -> BoxFuture<'_, Result<String, ContainerError>> {
+        let name = name.to_string();
+        Box::pin(async move {
+            let docker = self.get_docker()?;
+            let exec_config = bollard::exec::CreateExecOptions {
+                cmd: Some(cmd),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                ..Default::default()
+            };
+            let exec = docker
+                .create_exec(&name, exec_config)
+                .await
+                .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
+
+            let mut output = String::new();
+            if let bollard::exec::StartExecResults::Attached { output: mut stream, .. } = docker
+                .start_exec(&exec.id, None)
+                .await
+                .map_err(|e| ContainerError::ExecFailed(e.to_string()))?
+            {
+                while let Some(Ok(msg)) = stream.next().await {
+                    output.push_str(&msg.to_string());
+                }
+            }
+
+            let inspect = docker
+                .inspect_exec(&exec.id)
+                .await
+                .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
+
+            if let Some(exit_code) = inspect.exit_code {
+                if exit_code != 0 {
+                    return Err(ContainerError::ExecFailed(format!(
+                        "Command exited with code {exit_code}: {output}"
+                    )));
+                }
+            }
+
+            Ok(output)
+        })
+    }
 }
 
 #[cfg(test)]

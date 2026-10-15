@@ -1,0 +1,145 @@
+use crate::domain::backup::{BackupError, BoxFuture, PCloudClientPort, PCloudRegion};
+use serde::Deserialize;
+use std::time::Duration;
+
+#[derive(Clone)]
+pub struct HttpPCloudClient {
+    client: reqwest::Client,
+}
+
+impl HttpPCloudClient {
+    pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(600)) // 10 minutes timeout for large vaults
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self { client }
+    }
+}
+
+impl Default for HttpPCloudClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Deserialize)]
+struct PCloudUploadResponse {
+    result: i32,
+    error: Option<String>,
+}
+
+impl PCloudClientPort for HttpPCloudClient {
+    fn upload(
+        &self,
+        region: &PCloudRegion,
+        token: &str,
+        folder: &str,
+        filename: &str,
+        data: Vec<u8>,
+    ) -> BoxFuture<'_, Result<(), BackupError>> {
+        let region = region.clone();
+        let token = token.to_string();
+        let folder = folder.trim().to_string();
+        let filename = filename.to_string();
+
+        Box::pin(async move {
+            if token.is_empty() {
+                return Err(BackupError::PCloudUploadFailed(
+                    "pCloud access token is not configured".to_string(),
+                ));
+            }
+
+            let folder_param = if folder.is_empty() || folder == "0" {
+                "folderid=0".to_string()
+            } else if folder.chars().all(|c| c.is_ascii_digit()) {
+                format!("folderid={}", folder)
+            } else {
+                format!("path={}", urlencoding(&folder))
+            };
+
+            let url = format!(
+                "https://{}/uploadfile?{}&access_token={}&nopartial=1",
+                region.api_host(),
+                folder_param,
+                token
+            );
+
+            let part = reqwest::multipart::Part::bytes(data).file_name(filename.clone());
+            let form = reqwest::multipart::Form::new().part("file", part);
+
+            let res = self
+                .client
+                .post(&url)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("HTTP request failed: {e}")))?;
+
+            if !res.status().is_success() {
+                return Err(BackupError::PCloudUploadFailed(format!(
+                    "pCloud server returned HTTP status {}",
+                    res.status()
+                )));
+            }
+
+            let body_text = res
+                .text()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to read response: {e}")))?;
+
+            match serde_json::from_str::<PCloudUploadResponse>(&body_text) {
+                Ok(resp) => {
+                    if resp.result != 0 {
+                        let err_msg = resp.error.unwrap_or_else(|| format!("pCloud error code {}", resp.result));
+                        return Err(BackupError::PCloudUploadFailed(err_msg));
+                    }
+                    Ok(())
+                }
+                Err(_) => {
+                    // If response is not standard json error or success, check if contains success indicators
+                    if body_text.contains("\"result\":0") || body_text.contains("\"result\": 0") {
+                        Ok(())
+                    } else {
+                        Err(BackupError::PCloudUploadFailed(format!(
+                            "Invalid pCloud API response: {body_text}"
+                        )))
+                    }
+                }
+            }
+        })
+    }
+}
+
+fn urlencoding(val: &str) -> String {
+    let mut out = String::new();
+    for b in val.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' || b == b'/' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_urlencoding() {
+        assert_eq!(urlencoding("/Vaultwarden/Backups"), "/Vaultwarden/Backups");
+        assert_eq!(urlencoding("My Backups"), "My%20Backups");
+    }
+
+    #[tokio::test]
+    async fn test_empty_token_fails() {
+        let client = HttpPCloudClient::new();
+        let res = client
+            .upload(&PCloudRegion::EU, "", "0", "test.enc", vec![1, 2, 3])
+            .await;
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("access token is not configured"));
+    }
+}

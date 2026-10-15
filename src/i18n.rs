@@ -10,6 +10,8 @@ pub struct Translations {
     pub metrics: MetricsTranslations,
     pub cli: CliTranslations,
     pub errors: ErrorsTranslations,
+    #[serde(default)]
+    pub backups: BackupsTranslations,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +193,140 @@ pub struct ErrorsTranslations {
     pub webauthn_error: String,
     pub unauthorized: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BackupsTranslations {
+    #[serde(default = "default_b_status")]
+    pub section_status: String,
+    #[serde(default = "default_b_now")]
+    pub btn_backup_now: String,
+    #[serde(default = "default_b_running")]
+    pub btn_running: String,
+    #[serde(default = "default_b_cron_en")]
+    pub cron_enabled: String,
+    #[serde(default = "default_b_cron_dis")]
+    pub cron_disabled: String,
+    #[serde(default = "default_b_next_run")]
+    pub next_run: String,
+    #[serde(default = "default_b_no_sched")]
+    pub no_scheduled_run: String,
+    #[serde(default = "default_b_sec_cfg")]
+    pub section_config: String,
+    #[serde(default = "default_b_en_cron")]
+    pub enable_cron: String,
+    #[serde(default = "default_b_cron_expr")]
+    pub cron_expression_label: String,
+    #[serde(default = "default_b_cron_hint")]
+    pub cron_hint: String,
+    #[serde(default = "default_b_preset_daily")]
+    pub cron_preset_daily: String,
+    #[serde(default = "default_b_preset_12h")]
+    pub cron_preset_12h: String,
+    #[serde(default = "default_b_preset_weekly")]
+    pub cron_preset_weekly: String,
+    #[serde(default = "default_b_sec_enc")]
+    pub encryption_section: String,
+    #[serde(default = "default_b_enc_pass")]
+    pub encryption_password_label: String,
+    #[serde(default = "default_b_enc_pass_ph")]
+    pub encryption_password_placeholder: String,
+    #[serde(default = "default_b_pcloud_sec")]
+    pub pcloud_section: String,
+    #[serde(default = "default_b_pcloud_reg")]
+    pub pcloud_region_label: String,
+    #[serde(default = "default_b_pcloud_eu")]
+    pub pcloud_region_eu: String,
+    #[serde(default = "default_b_pcloud_us")]
+    pub pcloud_region_us: String,
+    #[serde(default = "default_b_pcloud_tok")]
+    pub pcloud_token_label: String,
+    #[serde(default = "default_b_pcloud_tok_ph")]
+    pub pcloud_token_placeholder: String,
+    #[serde(default = "default_b_pcloud_fld")]
+    pub pcloud_folder_label: String,
+    #[serde(default = "default_b_pcloud_fld_ph")]
+    pub pcloud_folder_placeholder: String,
+    #[serde(default = "default_b_loc_sec")]
+    pub local_paths_section: String,
+    #[serde(default = "default_b_data_lbl")]
+    pub data_path_label: String,
+    #[serde(default = "default_b_env_lbl")]
+    pub env_path_label: String,
+    #[serde(default = "default_b_found")]
+    pub path_found: String,
+    #[serde(default = "default_b_missing")]
+    pub path_missing: String,
+    #[serde(default = "default_b_save")]
+    pub btn_save_config: String,
+    #[serde(default = "default_b_hist_sec")]
+    pub history_section: String,
+    #[serde(default = "default_b_hist_empty")]
+    pub history_empty: String,
+    #[serde(default = "default_b_tbl_date")]
+    pub table_date: String,
+    #[serde(default = "default_b_tbl_fn")]
+    pub table_filename: String,
+    #[serde(default = "default_b_tbl_sz")]
+    pub table_size: String,
+    #[serde(default = "default_b_tbl_dur")]
+    pub table_duration: String,
+    #[serde(default = "default_b_tbl_st")]
+    pub table_status: String,
+    #[serde(default = "default_b_st_succ")]
+    pub status_success: String,
+    #[serde(default = "default_b_st_fail")]
+    pub status_failed: String,
+    #[serde(default = "default_b_cfg_saved")]
+    pub config_saved_success: String,
+    #[serde(default = "default_b_bkp_succ")]
+    pub backup_started_success: String,
+    #[serde(default = "default_b_already_run")]
+    pub backup_already_running: String,
+}
+
+fn default_b_status() -> String { "Status do Agendamento & Operação".to_string() }
+fn default_b_now() -> String { "Fazer Backup Agora".to_string() }
+fn default_b_running() -> String { "Executando Backup...".to_string() }
+fn default_b_cron_en() -> String { "Agendamento Automático Ativo".to_string() }
+fn default_b_cron_dis() -> String { "Agendamento Desativado".to_string() }
+fn default_b_next_run() -> String { "Próxima execução estimada:".to_string() }
+fn default_b_no_sched() -> String { "Nenhuma rotina agendada".to_string() }
+fn default_b_sec_cfg() -> String { "Configuração da Rotina de Backup".to_string() }
+fn default_b_en_cron() -> String { "Habilitar agendamento automático via Cron".to_string() }
+fn default_b_cron_expr() -> String { "Expressão Cron".to_string() }
+fn default_b_cron_hint() -> String { "Formato: minuto hora dia mês dia-da-semana (ex: 0 3 * * * = diariamente às 03:00)".to_string() }
+fn default_b_preset_daily() -> String { "Diário (03:00)".to_string() }
+fn default_b_preset_12h() -> String { "A cada 12 horas".to_string() }
+fn default_b_preset_weekly() -> String { "Semanal (Domingo 03:00)".to_string() }
+fn default_b_sec_enc() -> String { "Criptografia de Dados (AES-256-GCM)".to_string() }
+fn default_b_enc_pass() -> String { "Senha de Criptografia do Pacote".to_string() }
+fn default_b_enc_pass_ph() -> String { "Digite uma senha forte para criptografar o backup".to_string() }
+fn default_b_pcloud_sec() -> String { "Destino em Nuvem: pCloud API".to_string() }
+fn default_b_pcloud_reg() -> String { "Região do Data Center pCloud".to_string() }
+fn default_b_pcloud_eu() -> String { "Europa (eapi.pcloud.com)".to_string() }
+fn default_b_pcloud_us() -> String { "Estados Unidos (api.pcloud.com)".to_string() }
+fn default_b_pcloud_tok() -> String { "Access Token OAuth do pCloud".to_string() }
+fn default_b_pcloud_tok_ph() -> String { "Cole seu token de acesso da API do pCloud".to_string() }
+fn default_b_pcloud_fld() -> String { "Pasta de Destino no pCloud (ID ou Caminho)".to_string() }
+fn default_b_pcloud_fld_ph() -> String { "0 (raiz) ou /Backups/Vaultwarden".to_string() }
+fn default_b_loc_sec() -> String { "Diagnóstico de Arquivos e Pastas Locais (.env)".to_string() }
+fn default_b_data_lbl() -> String { "Diretório de dados (/data):".to_string() }
+fn default_b_env_lbl() -> String { "Arquivo de ambiente (vaultwarden.env):".to_string() }
+fn default_b_found() -> String { "Acessível".to_string() }
+fn default_b_missing() -> String { "Não encontrado no host".to_string() }
+fn default_b_save() -> String { "Salvar Configurações".to_string() }
+fn default_b_hist_sec() -> String { "Histórico de Backups".to_string() }
+fn default_b_hist_empty() -> String { "Nenhum backup realizado até o momento.".to_string() }
+fn default_b_tbl_date() -> String { "Data / Hora".to_string() }
+fn default_b_tbl_fn() -> String { "Arquivo Gerado".to_string() }
+fn default_b_tbl_sz() -> String { "Tamanho".to_string() }
+fn default_b_tbl_dur() -> String { "Duração".to_string() }
+fn default_b_tbl_st() -> String { "Status".to_string() }
+fn default_b_st_succ() -> String { "Sucesso".to_string() }
+fn default_b_st_fail() -> String { "Falha".to_string() }
+fn default_b_cfg_saved() -> String { "Configurações de backup salvas com sucesso!".to_string() }
+fn default_b_bkp_succ() -> String { "Backup executado e enviado com sucesso ao pCloud!".to_string() }
+fn default_b_already_run() -> String { "Um backup já está em andamento. Aguarde a finalização.".to_string() }
 
 pub struct I18n;
 

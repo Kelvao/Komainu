@@ -1,12 +1,15 @@
 use clap::Parser;
 use komainu::application::auth_service::AuthService;
+use komainu::application::backup_service::BackupService;
 use komainu::application::container_service::ContainerService;
 use komainu::application::system_service::SystemService;
 use komainu::cli::Cli;
 use komainu::config::Config;
 use komainu::infrastructure::auth_store::FileCredentialStore;
+use komainu::infrastructure::backup_store::FileBackupStore;
 use komainu::infrastructure::docker::DockerAdapter;
 use komainu::infrastructure::http::{run_server, AppState};
+use komainu::infrastructure::pcloud::HttpPCloudClient;
 use komainu::infrastructure::system::SysinfoAdapter;
 use std::sync::Arc;
 use tracing::info;
@@ -29,11 +32,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?);
 
     info!("Configurando adaptador Docker em '{}'...", config.docker_socket);
-    let docker_adapter = DockerAdapter::new(&config.docker_socket);
+    let docker_adapter = Arc::new(DockerAdapter::new(&config.docker_socket));
     let container_service = Arc::new(ContainerService::new(
-        Arc::new(docker_adapter),
+        docker_adapter.clone(),
         config.vw_container_name.clone(),
     ));
+
+    let backup_store = Arc::new(FileBackupStore::new(&config.backup_config_path));
+    let pcloud_client = Arc::new(HttpPCloudClient::new());
+    let backup_service = Arc::new(BackupService::new(
+        docker_adapter.clone(),
+        backup_store,
+        pcloud_client,
+        config.vw_container_name.clone(),
+        &config.vw_data_path,
+        &config.vw_env_path,
+    ));
+
+    // Iniciar loop de cronjobs agendados em segundo plano
+    backup_service.clone().start_cron_loop();
 
     let system_adapter = SysinfoAdapter::new();
     let system_service = Arc::new(SystemService::new(Arc::new(system_adapter)));
@@ -45,6 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         container_service,
         system_service,
         auth_service: auth_service.clone(),
+        backup_service,
         cookie_key,
         i18n: i18n.clone(),
         base_path: config.base_path.clone(),

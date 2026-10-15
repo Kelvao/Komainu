@@ -8,6 +8,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, Key, SignedCookieJar};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub container_service: Arc<ContainerService>,
     pub system_service: Arc<SystemService>,
     pub auth_service: Arc<AuthService>,
+    pub backup_service: Arc<crate::application::backup_service::BackupService>,
     pub cookie_key: Key,
     pub i18n: Arc<crate::i18n::Translations>,
     pub base_path: String,
@@ -72,6 +74,9 @@ pub fn create_router(state: AppState) -> Router {
         // Rotas protegidas por sessão
         .route("/", get(dashboard_page))
         .route("/backups", get(backups_page))
+        .route("/api/backups/config", post(backup_save_config_handler))
+        .route("/api/backups/run", post(backup_run_now_handler))
+        .route("/api/backups/fragment", get(backup_fragment_handler))
         .route("/api/dashboard-fragment", get(dashboard_fragment_handler))
         .route("/api/container/start", post(container_start_handler))
         .route("/api/container/stop", post(container_stop_handler))
@@ -1240,7 +1245,11 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
     let i18n_arc = resolve_i18n(&jar, &state);
     let i18n = &*i18n_arc;
     let navbar = render_navbar(&state.base_path, i18n, ActiveNav::Backups, "/backups");
-    let head_tags = theme::render_head(&format!("{} - Komainu", i18n.dashboard.nav_backups), "");
+    let head_tags = theme::render_head(
+        &format!("{} - Komainu", i18n.dashboard.nav_backups),
+        r#"<script src="https://unpkg.com/htmx.org@2.0.4"></script>"#,
+    );
+    let fragment = render_backups_fragment(&state, i18n, None).await;
 
     let html = format!(
         r##"<!DOCTYPE html>
@@ -1252,27 +1261,8 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
     {navbar}
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
-        <div class="space-y-6">
-            <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
-                <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
-                <div class="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
-                    <div class="w-10 h-10 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-lg shrink-0">
-                        <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>
-                    </div>
-                    <div>
-                        <h2 class="text-xl font-display font-bold tracking-tight text-white">{backups_title}</h2>
-                        <p class="text-xs text-slate-400 font-mono mt-0.5">{backups_subtitle}</p>
-                    </div>
-                </div>
-
-                <div class="mt-8 mb-8 text-center max-w-md mx-auto py-8 px-4 rounded-xl bg-canvas border border-white/[0.06]">
-                    <div class="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-2xl mx-auto mb-4">
-                        🛡️
-                    </div>
-                    <h3 class="text-base font-display font-semibold text-white mb-2">{placeholder_title}</h3>
-                    <p class="text-xs text-slate-400 leading-relaxed font-sans">{placeholder_desc}</p>
-                </div>
-            </div>
+        <div id="backups-content" hx-get="{base_path}/api/backups/fragment" hx-trigger="backupCompleted from:body" hx-swap="innerHTML">
+            {fragment}
         </div>
     </main>
 
@@ -1284,14 +1274,466 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
         lang = i18n.lang,
         head_tags = head_tags,
         navbar = navbar,
-        backups_title = i18n.dashboard.backups_title,
-        backups_subtitle = i18n.dashboard.backups_subtitle,
-        placeholder_title = i18n.dashboard.backups_placeholder_title,
-        placeholder_desc = i18n.dashboard.backups_placeholder_desc,
+        fragment = fragment,
         footer = i18n.common.footer,
+        base_path = state.base_path,
     );
 
     Html(html).into_response()
+}
+
+#[derive(Deserialize)]
+struct BackupConfigForm {
+    enabled: Option<String>,
+    cron_expression: Option<String>,
+    encryption_password: Option<String>,
+    pcloud_region: Option<String>,
+    pcloud_token: Option<String>,
+    pcloud_folder: Option<String>,
+}
+
+async fn backup_save_config_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    axum::extract::Form(form): axum::extract::Form<BackupConfigForm>,
+) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
+    if !is_authenticated(&jar) {
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
+    }
+
+    let enabled = form.enabled.as_deref() == Some("on");
+    let cron_expression = form.cron_expression.unwrap_or_else(|| "0 3 * * *".to_string()).trim().to_string();
+    let encryption_password = form.encryption_password.unwrap_or_default().trim().to_string();
+    let pcloud_region = match form.pcloud_region.as_deref() {
+        Some("US") => crate::domain::backup::PCloudRegion::US,
+        _ => crate::domain::backup::PCloudRegion::EU,
+    };
+    let pcloud_token = form.pcloud_token.unwrap_or_default().trim().to_string();
+    let pcloud_folder = form.pcloud_folder.unwrap_or_else(|| "0".to_string()).trim().to_string();
+
+    let new_cfg = crate::domain::backup::BackupConfig {
+        enabled,
+        cron_expression,
+        encryption_password,
+        pcloud_region,
+        pcloud_token,
+        pcloud_folder,
+    };
+
+    let result = state.backup_service.save_config(&new_cfg).await;
+    let msg = match result {
+        Ok(_) => Some((true, i18n.backups.config_saved_success.clone())),
+        Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
+    };
+
+    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+}
+
+async fn backup_run_now_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
+    if !is_authenticated(&jar) {
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
+    }
+
+    let result = state.backup_service.execute_backup().await;
+    let msg = match result {
+        Ok(rec) => Some((true, format!("{} ({})", i18n.backups.backup_started_success, rec.filename))),
+        Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
+    };
+
+    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+}
+
+async fn backup_fragment_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
+    if !is_authenticated(&jar) {
+        let mut headers = HeaderMap::new();
+        let login_url = format!("{}/login", state.base_path);
+        headers.insert("HX-Redirect", login_url.parse().unwrap());
+        return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
+    }
+
+    Html(render_backups_fragment(&state, &i18n, None).await).into_response()
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.2} GB", b / GB)
+    } else if b >= MB {
+        format!("{:.1} MB", b / MB)
+    } else if b >= KB {
+        format!("{:.0} KB", b / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+async fn render_backups_fragment(
+    state: &AppState,
+    i18n: &crate::i18n::Translations,
+    action_msg: Option<(bool, String)>,
+) -> String {
+    let config = state.backup_service.get_config().await.unwrap_or_default();
+    let history = state.backup_service.get_history().await.unwrap_or_default();
+    let is_in_progress = state.backup_service.is_in_progress().await;
+    let data_exists = state.backup_service.data_path_exists();
+    let env_exists = state.backup_service.env_path_exists();
+
+    let alert_banner = match action_msg {
+        Some((true, msg)) => format!(
+            r##"<div id="backup-action-alert" class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2.5">
+                    <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold shrink-0">OK</span>
+                    <span>{}</span>
+                </div>
+                <button type="button" onclick="document.getElementById('backup-action-alert').remove()" class="text-emerald-400/70 hover:text-emerald-200 transition p-1 rounded-md hover:bg-emerald-500/20" title="Dismiss">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>"##,
+            msg
+        ),
+        Some((false, msg)) => format!(
+            r##"<div id="backup-action-alert" class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2.5">
+                    <span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold shrink-0">FAIL</span>
+                    <span>{}</span>
+                </div>
+                <button type="button" onclick="document.getElementById('backup-action-alert').remove()" class="text-rose-400/70 hover:text-rose-200 transition p-1 rounded-md hover:bg-rose-500/20" title="Dismiss">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>"##,
+            msg
+        ),
+        None => String::new(),
+    };
+
+    let next_run_str = if config.enabled {
+        let schedule = cron::Schedule::from_str(&config.cron_expression)
+            .or_else(|_| cron::Schedule::from_str(&format!("0 {}", config.cron_expression.trim())));
+        match schedule {
+            Ok(s) => s
+                .upcoming(chrono::Local)
+                .next()
+                .map(|dt| dt.format("%d/%m/%Y às %H:%M:%S").to_string())
+                .unwrap_or_else(|| i18n.backups.no_scheduled_run.clone()),
+            Err(_) => i18n.backups.no_scheduled_run.clone(),
+        }
+    } else {
+        i18n.backups.no_scheduled_run.clone()
+    };
+
+    let status_badge = if config.enabled {
+        format!(
+            r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                {} &bull; {}
+            </span>"##,
+            i18n.backups.cron_enabled, config.cron_expression
+        )
+    } else {
+        format!(
+            r##"<span class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-white/[0.05] text-slate-400 border border-white/[0.08] flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                {}
+            </span>"##,
+            i18n.backups.cron_disabled
+        )
+    };
+
+    let run_btn_disabled = if is_in_progress { "disabled" } else { "" };
+    let run_btn_text = if is_in_progress {
+        &i18n.backups.btn_running
+    } else {
+        &i18n.backups.btn_backup_now
+    };
+
+    let cron_checked = if config.enabled { "checked" } else { "" };
+    let region_eu_selected = if config.pcloud_region == crate::domain::backup::PCloudRegion::EU { "selected" } else { "" };
+    let region_us_selected = if config.pcloud_region == crate::domain::backup::PCloudRegion::US { "selected" } else { "" };
+
+    let data_path_badge = if data_exists {
+        format!(r##"<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{}</span>"##, i18n.backups.path_found)
+    } else {
+        format!(r##"<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">{}</span>"##, i18n.backups.path_missing)
+    };
+
+    let env_path_badge = if env_exists {
+        format!(r##"<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{}</span>"##, i18n.backups.path_found)
+    } else {
+        format!(r##"<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">{}</span>"##, i18n.backups.path_missing)
+    };
+
+    let mut history_rows = String::new();
+    if history.is_empty() {
+        history_rows.push_str(&format!(
+            r##"<tr><td colspan="5" class="py-8 text-center text-xs text-slate-500 font-mono">{}</td></tr>"##,
+            i18n.backups.history_empty
+        ));
+    } else {
+        for rec in history.iter().take(20) {
+            let dt_str = chrono::DateTime::from_timestamp(rec.timestamp as i64, 0)
+                .map(|dt| dt.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            let (badge, badge_color) = match &rec.status {
+                crate::domain::backup::BackupStatus::Success => (i18n.backups.status_success.as_str(), "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"),
+                crate::domain::backup::BackupStatus::Failed(e) => (e.as_str(), "bg-rose-500/10 text-rose-400 border-rose-500/25"),
+            };
+            let sz_str = format_bytes(rec.size_bytes);
+            let dur_str = format!("{}s", rec.duration_secs);
+            history_rows.push_str(&format!(
+                r##"<tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono">
+                    <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
+                    <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
+                    <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
+                    <td class="py-3 px-3 text-slate-400 tabular-nums whitespace-nowrap">{dur_str}</td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold border {badge_color}">{badge}</span>
+                    </td>
+                </tr>"##,
+                dt_str = dt_str,
+                filename = rec.filename,
+                sz_str = sz_str,
+                dur_str = dur_str,
+                badge = badge,
+                badge_color = badge_color,
+            ));
+        }
+    }
+
+    format!(
+        r##"<div class="space-y-6">
+    {alert_banner}
+
+    <!-- CARD 1: STATUS DO AGENDAMENTO E EXECUÇÃO RÁPIDA -->
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl font-display font-bold tracking-tight text-white">{backups_title}</h2>
+                    {status_badge}
+                </div>
+                <p class="text-xs text-slate-400 font-mono mt-1.5 flex items-center gap-2">
+                    <span>{next_run_label}</span>
+                    <strong class="text-rose-300">{next_run_val}</strong>
+                </p>
+            </div>
+
+            <div>
+                <button 
+                    hx-post="{base_path}/api/backups/run" 
+                    hx-target="#backups-content" 
+                    hx-swap="innerHTML"
+                    {run_btn_disabled}
+                    class="w-full sm:w-auto px-4 py-2.5 rounded-lg text-xs font-semibold font-sans transition-all duration-150 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30 shadow-md">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    <span>{run_btn_text}</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CARD 2: CONFIGURAÇÕES DA ROTINA, CRON E PCLOUD -->
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+
+        <div class="mb-5 pb-4 border-b border-white/[0.06]">
+            <h3 class="text-lg font-display font-bold tracking-tight text-white">{section_config}</h3>
+            <p class="text-xs text-slate-400 mt-0.5">{backups_subtitle}</p>
+        </div>
+
+        <form hx-post="{base_path}/api/backups/config" hx-target="#backups-content" hx-swap="innerHTML" class="space-y-6">
+            <!-- Bloco 1: Cronjob -->
+            <div class="space-y-3">
+                <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="cron-enabled-check" name="enabled" {cron_checked} class="w-4 h-4 rounded bg-canvas border-white/[0.1] text-rose-600 focus:ring-rose-500">
+                    <label for="cron-enabled-check" class="text-xs font-mono font-semibold text-slate-200 cursor-pointer">{enable_cron}</label>
+                </div>
+
+                <div>
+                    <label for="cron-input" class="block text-xs font-mono text-slate-400 mb-1.5">{cron_expression_label}</label>
+                    <input type="text" id="cron-input" name="cron_expression" value="{cron_val}" placeholder="0 3 * * *" class="w-full sm:max-w-md px-3 py-2 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                    <p class="text-[11px] text-slate-500 font-mono mt-1">{cron_hint}</p>
+
+                    <!-- Presets rápidos -->
+                    <div class="flex flex-wrap gap-1.5 mt-2">
+                        <button type="button" onclick="document.getElementById('cron-input').value='0 3 * * *'" class="px-2 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-mono text-slate-300 border border-white/[0.06] transition-colors">{preset_daily}</button>
+                        <button type="button" onclick="document.getElementById('cron-input').value='0 */12 * * *'" class="px-2 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-mono text-slate-300 border border-white/[0.06] transition-colors">{preset_12h}</button>
+                        <button type="button" onclick="document.getElementById('cron-input').value='0 3 * * 0'" class="px-2 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-[11px] font-mono text-slate-300 border border-white/[0.06] transition-colors">{preset_weekly}</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 2: Criptografia -->
+            <div class="pt-4 border-t border-white/[0.06] space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
+                    <h4 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{encryption_section}</h4>
+                </div>
+
+                <div>
+                    <label for="enc-pass" class="block text-xs font-mono text-slate-400 mb-1.5">{encryption_password_label}</label>
+                    <div class="relative w-full sm:max-w-md">
+                        <input type="password" id="enc-pass" name="encryption_password" value="{enc_pass_val}" placeholder="{enc_pass_ph}" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                        <button type="button" onclick="const f=document.getElementById('enc-pass');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans mt-1">O arquivo .zip contendo banco, attachments, sends, chaves e templates será criptografado antes do envio.</p>
+                </div>
+            </div>
+
+            <!-- Bloco 3: pCloud API -->
+            <div class="pt-4 border-t border-white/[0.06] space-y-4">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
+                    <h4 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{pcloud_section}</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_region_label}</label>
+                        <select name="pcloud_region" class="w-full px-3 py-2 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                            <option value="EU" {region_eu_selected}>{pcloud_region_eu}</option>
+                            <option value="US" {region_us_selected}>{pcloud_region_us}</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_folder_label}</label>
+                        <input type="text" name="pcloud_folder" value="{pcloud_folder_val}" placeholder="{pcloud_folder_ph}" class="w-full px-3 py-2 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_token_label}</label>
+                    <div class="relative w-full sm:max-w-md">
+                        <input type="password" id="pcloud-tok" name="pcloud_token" value="{pcloud_token_val}" placeholder="{pcloud_token_ph}" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                        <button type="button" onclick="const f=document.getElementById('pcloud-tok');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 4: Diagnóstico de Caminhos Locais -->
+            <div class="pt-4 border-t border-white/[0.06] space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
+                    <h4 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{local_paths_section}</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+                    <div class="p-3 rounded-lg bg-canvas border border-white/[0.06] flex items-center justify-between gap-2">
+                        <span class="text-slate-400 truncate">{data_path_label}</span>
+                        {data_path_badge}
+                    </div>
+                    <div class="p-3 rounded-lg bg-canvas border border-white/[0.06] flex items-center justify-between gap-2">
+                        <span class="text-slate-400 truncate">{env_path_label}</span>
+                        {env_path_badge}
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-4 flex justify-end">
+                <button type="submit" class="px-5 py-2.5 rounded-lg text-xs font-semibold font-sans transition-all duration-150 flex items-center gap-2 bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white border border-rose-400/30 shadow-md">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    <span>{btn_save_config}</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CARD 3: HISTÓRICO DE BACKUPS -->
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+
+        <div class="mb-4 pb-3 border-b border-white/[0.06] flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-display font-bold tracking-tight text-white">{history_section}</h3>
+            </div>
+            <button hx-get="{base_path}/api/backups/fragment" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
+                <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-white/[0.08] text-[11px] font-mono uppercase text-slate-400">
+                        <th class="py-2.5 px-3">{table_date}</th>
+                        <th class="py-2.5 px-3">{table_filename}</th>
+                        <th class="py-2.5 px-3">{table_size}</th>
+                        <th class="py-2.5 px-3">{table_duration}</th>
+                        <th class="py-2.5 px-3">{table_status}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {history_rows}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>"##,
+        alert_banner = alert_banner,
+        backups_title = i18n.dashboard.backups_title,
+        backups_subtitle = i18n.dashboard.backups_subtitle,
+        status_badge = status_badge,
+        next_run_label = i18n.backups.next_run,
+        next_run_val = next_run_str,
+        base_path = state.base_path,
+        run_btn_disabled = run_btn_disabled,
+        run_btn_text = run_btn_text,
+        section_config = i18n.backups.section_config,
+        enable_cron = i18n.backups.enable_cron,
+        cron_checked = cron_checked,
+        cron_expression_label = i18n.backups.cron_expression_label,
+        cron_val = config.cron_expression,
+        cron_hint = i18n.backups.cron_hint,
+        preset_daily = i18n.backups.cron_preset_daily,
+        preset_12h = i18n.backups.cron_preset_12h,
+        preset_weekly = i18n.backups.cron_preset_weekly,
+        encryption_section = i18n.backups.encryption_section,
+        encryption_password_label = i18n.backups.encryption_password_label,
+        enc_pass_val = config.encryption_password,
+        enc_pass_ph = i18n.backups.encryption_password_placeholder,
+        pcloud_section = i18n.backups.pcloud_section,
+        pcloud_region_label = i18n.backups.pcloud_region_label,
+        pcloud_region_eu = i18n.backups.pcloud_region_eu,
+        pcloud_region_us = i18n.backups.pcloud_region_us,
+        region_eu_selected = region_eu_selected,
+        region_us_selected = region_us_selected,
+        pcloud_folder_label = i18n.backups.pcloud_folder_label,
+        pcloud_folder_val = config.pcloud_folder,
+        pcloud_folder_ph = i18n.backups.pcloud_folder_placeholder,
+        pcloud_token_label = i18n.backups.pcloud_token_label,
+        pcloud_token_val = config.pcloud_token,
+        pcloud_token_ph = i18n.backups.pcloud_token_placeholder,
+        local_paths_section = i18n.backups.local_paths_section,
+        data_path_label = i18n.backups.data_path_label,
+        data_path_badge = data_path_badge,
+        env_path_label = i18n.backups.env_path_label,
+        env_path_badge = env_path_badge,
+        btn_save_config = i18n.backups.btn_save_config,
+        history_section = i18n.backups.history_section,
+        table_date = i18n.backups.table_date,
+        table_filename = i18n.backups.table_filename,
+        table_size = i18n.backups.table_size,
+        table_duration = i18n.backups.table_duration,
+        table_status = i18n.backups.table_status,
+        history_rows = history_rows,
+    )
 }
 
 async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
@@ -1705,6 +2147,9 @@ mod tests {
         fn rebuild(&self, _name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
             Box::pin(async { Ok(()) })
         }
+        fn exec_command(&self, _name: &str, _cmd: Vec<String>) -> BoxFuture<'_, Result<String, ContainerError>> {
+            Box::pin(async { Ok("success".to_string()) })
+        }
     }
 
     struct MockSystemMonitor;
@@ -1735,6 +2180,68 @@ mod tests {
         }
     }
 
+    use std::sync::Mutex;
+    use crate::domain::backup::{BackupConfig, BackupConfigStorePort, BackupError, BackupRecord, PCloudClientPort, PCloudRegion};
+    use crate::application::backup_service::BackupService;
+
+    struct MockBackupConfigStore {
+        config: Mutex<BackupConfig>,
+        history: Mutex<Vec<BackupRecord>>,
+    }
+
+    impl MockBackupConfigStore {
+        fn new() -> Self {
+            Self {
+                config: Mutex::new(BackupConfig::default()),
+                history: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl BackupConfigStorePort for MockBackupConfigStore {
+        fn load_config(&self) -> BoxFuture<'_, Result<BackupConfig, BackupError>> {
+            let cfg = self.config.lock().unwrap().clone();
+            Box::pin(async move { Ok(cfg) })
+        }
+        fn save_config(&self, config: &BackupConfig) -> BoxFuture<'_, Result<(), BackupError>> {
+            *self.config.lock().unwrap() = config.clone();
+            Box::pin(async move { Ok(()) })
+        }
+        fn load_history(&self) -> BoxFuture<'_, Result<Vec<BackupRecord>, BackupError>> {
+            let hist = self.history.lock().unwrap().clone();
+            Box::pin(async move { Ok(hist) })
+        }
+        fn add_record(&self, record: BackupRecord) -> BoxFuture<'_, Result<(), BackupError>> {
+            self.history.lock().unwrap().push(record);
+            Box::pin(async move { Ok(()) })
+        }
+    }
+
+    struct MockPCloudClient;
+    impl PCloudClientPort for MockPCloudClient {
+        fn upload(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _folder: &str,
+            _filename: &str,
+            _data: Vec<u8>,
+        ) -> BoxFuture<'_, Result<(), BackupError>> {
+            Box::pin(async move { Ok(()) })
+        }
+    }
+
+    fn create_test_backup_service() -> Arc<BackupService> {
+        Arc::new(BackupService::new(
+            Arc::new(MockContainerPort),
+            Arc::new(MockBackupConfigStore::new()),
+            Arc::new(MockPCloudClient),
+            "vaultwarden".to_string(),
+            "/tmp/test_vw_data",
+            "/tmp/test_vw_env",
+        ))
+    }
+
     #[tokio::test]
     async fn test_health_check_handler() {
         assert_eq!(health_check().await, "OK");
@@ -1761,6 +2268,7 @@ mod tests {
             container_service: container_service.clone(),
             system_service: system_service.clone(),
             auth_service: auth_service.clone(),
+            backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             base_path: String::new(),
@@ -1788,6 +2296,7 @@ mod tests {
             container_service: container_service.clone(),
             system_service: system_service.clone(),
             auth_service: auth_service.clone(),
+            backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             base_path: "/komainu".to_string(),
@@ -1802,6 +2311,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n: Arc::new(crate::i18n::I18n::load("en")),
             base_path: String::new(),
@@ -1833,6 +2343,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
             base_path: String::new(),
@@ -1895,6 +2406,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
             base_path: "/komainu".to_string(),
@@ -1935,6 +2447,7 @@ mod tests {
             container_service,
             system_service,
             auth_service: auth_service.clone(),
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
             base_path: String::new(),
@@ -2032,6 +2545,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
             base_path: String::new(),
@@ -2080,6 +2594,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
             base_path: String::new(),
@@ -2119,6 +2634,7 @@ mod tests {
             container_service,
             system_service,
             auth_service,
+            backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             base_path: String::new(),
@@ -2161,6 +2677,80 @@ mod tests {
         assert!(body.contains("Home"));
         assert!(body.contains("Backups"));
         assert!(body.contains("Cópias de Segurança (Backups)"));
-        assert!(body.contains("Módulo de Backups em Preparação"));
+        assert!(body.contains("Configuração da Rotina de Backup"));
+    }
+
+    #[tokio::test]
+    async fn test_backup_api_endpoints() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            backup_service: create_test_backup_service(),
+            cookie_key: cookie_key.clone(),
+            i18n: i18n.clone(),
+            base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
+        };
+
+        let router = create_router(state);
+
+        // 1. Unauthenticated POST /api/backups/config -> 401
+        let req_unauth = Request::builder()
+            .uri("/api/backups/config")
+            .method("POST")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("enabled=on&cron_expression=0+3+*+*+*"))
+            .unwrap();
+        let res_unauth = router.clone().oneshot(req_unauth).await.unwrap();
+        assert_eq!(res_unauth.status(), StatusCode::UNAUTHORIZED);
+
+        // 2. Authenticated POST /api/backups/config -> 200 with success banner
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let jar = SignedCookieJar::new(cookie_key);
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        cookie.set_path("/");
+        let jar = jar.add(cookie);
+        let cookie_res = (jar, StatusCode::OK).into_response();
+        let set_cookie = cookie_res.headers().get("set-cookie").unwrap().to_str().unwrap();
+        let cookie_str = set_cookie.split(';').next().unwrap();
+
+        let req_save = Request::builder()
+            .uri("/api/backups/config")
+            .method("POST")
+            .header("cookie", cookie_str)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("enabled=on&cron_expression=0+4+*+*+*&pcloud_region=EU&pcloud_token=test_tok&pcloud_folder=12345&encryption_password=strong_password"))
+            .unwrap();
+        let res_save = router.clone().oneshot(req_save).await.unwrap();
+        assert_eq!(res_save.status(), StatusCode::OK);
+        let bytes = to_bytes(res_save.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("Configurações de backup salvas com sucesso!"));
+        assert!(body.contains("0 4 * * *"));
+
+        // 3. Authenticated GET /api/backups/fragment -> 200
+        let req_frag = Request::builder()
+            .uri("/api/backups/fragment")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_frag = router.oneshot(req_frag).await.unwrap();
+        assert_eq!(res_frag.status(), StatusCode::OK);
+        let frag_bytes = to_bytes(res_frag.into_body(), usize::MAX).await.unwrap();
+        let frag_body = String::from_utf8(frag_bytes.to_vec()).unwrap();
+        assert!(frag_body.contains("Cópias de Segurança (Backups)"));
     }
 }
