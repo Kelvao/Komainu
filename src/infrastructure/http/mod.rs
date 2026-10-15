@@ -1494,7 +1494,10 @@ async fn pcloud_oauth_callback_handler(
     };
 
     let token_endpoint = format!("https://{hostname}/oauth2_token");
-    let http_client = reqwest::Client::new();
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let res = http_client
         .post(&token_endpoint)
         .form(&[
