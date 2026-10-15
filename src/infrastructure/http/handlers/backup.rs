@@ -353,9 +353,9 @@ pub async fn backup_run_now_handler(
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
-    let result = state.backup_service.execute_backup().await;
+    let result = state.backup_service.start_backup_task();
     let msg = match result {
-        Ok(rec) => Some((true, format!("{} ({})", i18n.backups.backup_started_success, rec.filename))),
+        Ok(_) => Some((true, i18n.backups.backup_started_success.clone())),
         Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
     };
 

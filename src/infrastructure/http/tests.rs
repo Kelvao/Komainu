@@ -834,10 +834,24 @@ async fn test_backup_api_endpoints() {
         .header("cookie", cookie_str)
         .body(Body::empty())
         .unwrap();
-    let res_dl_hidden = router.oneshot(req_dl_hidden).await.unwrap();
+    let res_dl_hidden = router.clone().oneshot(req_dl_hidden).await.unwrap();
     assert_eq!(res_dl_hidden.status(), StatusCode::OK);
     let cd_hidden = res_dl_hidden.headers().get("content-disposition").unwrap().to_str().unwrap();
     assert!(cd_hidden.contains("attachment; filename=\"backup_123456.zip\""));
+
+    // 14. Test POST /api/backups/run (async manual trigger with polling)
+    let req_run = Request::builder()
+        .uri("/api/backups/run")
+        .method("POST")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_run = router.oneshot(req_run).await.unwrap();
+    assert_eq!(res_run.status(), StatusCode::OK);
+    let run_bytes = to_bytes(res_run.into_body(), usize::MAX).await.unwrap();
+    let run_html = String::from_utf8(run_bytes.to_vec()).unwrap();
+    assert!(run_html.contains("hx-trigger=\"every 3s\""));
+    assert!(run_html.contains(&state.i18n.backups.backup_started_success));
 }
 
 #[tokio::test]

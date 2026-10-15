@@ -311,8 +311,14 @@ pub async fn render_backups_fragment(
         )
     };
 
+    let poll_attr = if is_in_progress {
+        r##" hx-get="/api/backups/fragment" hx-trigger="every 3s" hx-target="#backups-content" hx-swap="innerHTML""##
+    } else {
+        ""
+    };
+
     format!(
-        r##"<div class="space-y-6">
+        r##"<div class="space-y-6"{poll_attr}>
     {alert_banner}
 
     <!-- CARD 1: STATUS DO AGENDAMENTO E EXECUÇÃO RÁPIDA -->
@@ -528,6 +534,7 @@ pub async fn render_backups_fragment(
     }}
     </script>
 </div>"##,
+        poll_attr = poll_attr,
         alert_banner = alert_banner,
         backups_title = i18n.dashboard.backups_title,
         backups_subtitle = i18n.dashboard.backups_subtitle,

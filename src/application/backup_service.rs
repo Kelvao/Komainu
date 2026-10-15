@@ -184,6 +184,26 @@ impl BackupService {
         Ok(decrypted_bytes)
     }
 
+    pub fn start_backup_task(self: &Arc<Self>) -> Result<(), BackupError> {
+        if self
+            .is_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Err(BackupError::ConfigError(
+                "A backup operation is already running".to_string(),
+            ));
+        }
+        let this = self.clone();
+        tokio::spawn(async move {
+            let _guard = BackupRunningGuard(this.is_running.clone());
+            if let Err(e) = this.run_backup_internal().await {
+                error!("Background manual backup failed: {e}");
+            }
+        });
+        Ok(())
+    }
+
     pub async fn is_in_progress(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
     }
