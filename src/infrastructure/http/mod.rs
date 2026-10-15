@@ -59,6 +59,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
+        .route("/assets/webauthn-json.js", get(webauthn_json_script_handler))
         .route("/set-lang", get(set_lang_handler))
         .route("/login", get(login_page))
         .route("/logout", post(logout_handler).get(logout_handler))
@@ -148,6 +149,16 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
+async fn webauthn_json_script_handler() -> impl IntoResponse {
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        WEBAUTHN_JSON_SCRIPT,
+    )
+}
+
 // ==========================================
 // PÁGINAS E AUTENTICAÇÃO WEBAUTHN
 // ==========================================
@@ -180,7 +191,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
     let head_tags = theme::render_head(
         &i18n.login.page_title,
-        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+        r#"<script src="/assets/webauthn-json.js"></script>"#,
     );
 
     let html = format!(
@@ -674,7 +685,7 @@ async fn qr_login_page(
 
     let head_tags = theme::render_head(
         &i18n.login.mobile_title,
-        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+        r#"<script src="/assets/webauthn-json.js"></script>"#,
     );
 
     let html = format!(
@@ -881,7 +892,7 @@ async fn register_page(
 
     let head_tags = theme::render_head(
         &i18n.register.page_title,
-        &format!("<script>{WEBAUTHN_JSON_SCRIPT}</script>"),
+        r#"<script src="/assets/webauthn-json.js"></script>"#,
     );
 
     let html = format!(
@@ -2582,6 +2593,9 @@ pub async fn run_server(host: &str, port: u16, state: AppState) -> Result<(), Bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
     use crate::domain::auth::{AuthError, CredentialStorePort};
     use crate::domain::container::{BoxFuture, ContainerError, ContainerPort, ContainerStatus};
     use crate::domain::system::{SystemMetrics, SystemMonitorPort};
@@ -2754,6 +2768,37 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_handler() {
         assert_eq!(health_check().await, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_webauthn_json_asset_route() {
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let router = create_router(AppState {
+            container_service: Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string())),
+            system_service: Arc::new(SystemService::new(Arc::new(MockSystemMonitor))),
+            auth_service,
+            backup_service: create_test_backup_service(),
+            cookie_key: derive_cookie_key("test-secret"),
+            i18n: Arc::new(crate::i18n::I18n::load("en")),
+            rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: "test_cid".to_string(),
+            pcloud_client_secret: "test_csec".to_string(),
+        });
+
+        let req = Request::builder()
+            .uri("/assets/webauthn-json.js")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get("content-type").unwrap(),
+            "application/javascript; charset=utf-8"
+        );
+        assert_eq!(
+            res.headers().get("cache-control").unwrap(),
+            "public, max-age=31536000, immutable"
+        );
     }
 
     #[tokio::test]
