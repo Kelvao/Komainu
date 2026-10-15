@@ -5,7 +5,7 @@ use crate::domain::backup::{
 use crate::domain::container::ContainerPort;
 use chrono::{Local, Timelike};
 use std::fs;
-use std::io::{Cursor, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +22,14 @@ struct BackupRunningGuard(Arc<AtomicBool>);
 impl Drop for BackupRunningGuard {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
     }
 }
 
@@ -166,23 +174,33 @@ impl BackupService {
             }
         };
 
-        // 3. Compactar no arquivo ZIP
-        info!("Packaging assets into encrypted archive...");
-        let zip_bytes = match self.build_zip_archive(&sqlite_file_path) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                if is_temp_snapshot {
-                    let _ = fs::remove_file(&sqlite_file_path);
-                }
-                self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
-                return Err(e);
+        // 3. Compactar no arquivo ZIP gravando em arquivo temporário no disco
+        let temp_zip_path = std::env::temp_dir().join(format!("vw_backup_{}.zip", record_id));
+        let _temp_zip_guard = TempFileGuard(temp_zip_path.clone());
+
+        info!("Packaging assets into temporary archive on disk...");
+        if let Err(e) = self.build_zip_archive(&sqlite_file_path, &temp_zip_path) {
+            if is_temp_snapshot {
+                let _ = fs::remove_file(&sqlite_file_path);
             }
-        };
+            self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
+            return Err(e);
+        }
 
         // Cleanup do snapshot gerado após incluir no zip para economizar disco
         if is_temp_snapshot {
             let _ = fs::remove_file(&sqlite_file_path);
         }
+
+        let zip_bytes = match fs::read(&temp_zip_path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let err = BackupError::IoError(format!("Failed to read temporary backup zip: {e}"));
+                self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
+                return Err(err);
+            }
+        };
+        drop(_temp_zip_guard);
 
         // 4. Criptografar com AES-256-GCM
         info!("Encrypting backup archive with AES-256-GCM...");
@@ -193,6 +211,7 @@ impl BackupService {
                 return Err(e);
             }
         };
+        drop(zip_bytes);
 
         let file_size = encrypted_data.len() as u64;
 
@@ -274,21 +293,22 @@ impl BackupService {
             .ok_or_else(|| BackupError::DatabaseBackupNotFound("No db_*.sqlite3 snapshot found".to_string()))
     }
 
-    fn build_zip_archive(&self, sqlite_path: &Path) -> Result<Vec<u8>, BackupError> {
-        let buf = Cursor::new(Vec::new());
-        let mut zip = ZipWriter::new(buf);
+    fn build_zip_archive(&self, sqlite_path: &Path, out_path: &Path) -> Result<(), BackupError> {
+        let file = fs::File::create(out_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to create temporary backup zip: {e}")))?;
+        let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o644);
 
         // 1. db.sqlite3
         if sqlite_path.exists() {
-            let db_bytes = fs::read(sqlite_path)
-                .map_err(|e| BackupError::IoError(format!("Failed to read database file: {e}")))?;
+            let mut db_file = fs::File::open(sqlite_path)
+                .map_err(|e| BackupError::IoError(format!("Failed to open database file: {e}")))?;
             zip.start_file("db.sqlite3", options)
                 .map_err(|e| BackupError::ZipError(e.to_string()))?;
-            zip.write_all(&db_bytes)
-                .map_err(|e| BackupError::ZipError(e.to_string()))?;
+            std::io::copy(&mut db_file, &mut zip)
+                .map_err(|e| BackupError::IoError(format!("Failed to write database to zip: {e}")))?;
         }
 
         // 2. attachments/
@@ -315,11 +335,10 @@ impl BackupService {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name.starts_with("rsa_key") && path.is_file() {
-                        if let Ok(bytes) = fs::read(&path) {
-                            zip.start_file(name, options)
-                                .map_err(|e| BackupError::ZipError(e.to_string()))?;
-                            zip.write_all(&bytes)
-                                .map_err(|e| BackupError::ZipError(e.to_string()))?;
+                        if let Ok(mut key_file) = fs::File::open(&path) {
+                            if zip.start_file(name, options).is_ok() {
+                                let _ = std::io::copy(&mut key_file, &mut zip);
+                            }
                         }
                     }
                 }
@@ -330,20 +349,18 @@ impl BackupService {
         for env_name in &["vaultwarden.env", ".env"] {
             let env_candidate = self.vw_data_path.join(env_name);
             if env_candidate.is_file() {
-                if let Ok(env_bytes) = fs::read(&env_candidate) {
-                    zip.start_file(*env_name, options)
-                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
-                    zip.write_all(&env_bytes)
-                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
-                    break;
+                if let Ok(mut env_file) = fs::File::open(&env_candidate) {
+                    if zip.start_file(*env_name, options).is_ok() {
+                        let _ = std::io::copy(&mut env_file, &mut zip);
+                        break;
+                    }
                 }
             }
         }
 
-        let cursor = zip
-            .finish()
+        zip.finish()
             .map_err(|e| BackupError::ZipError(e.to_string()))?;
-        Ok(cursor.into_inner())
+        Ok(())
     }
 
     fn add_directory_to_zip<W: Write + std::io::Seek>(
@@ -373,11 +390,10 @@ impl BackupService {
             if path.is_dir() {
                 self.add_directory_to_zip(zip, &path, &zip_path, options)?;
             } else if path.is_file() {
-                if let Ok(bytes) = fs::read(&path) {
-                    zip.start_file(zip_path, options)
-                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
-                    zip.write_all(&bytes)
-                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
+                if let Ok(mut file) = fs::File::open(&path) {
+                    if zip.start_file(zip_path, options).is_ok() {
+                        let _ = std::io::copy(&mut file, zip);
+                    }
                 }
             }
         }
@@ -601,7 +617,7 @@ mod tests {
             .expect("Decryption must succeed with correct password");
 
         // Inspect ZIP contents
-        let mut archive = zip::ZipArchive::new(Cursor::new(decrypted_zip)).expect("Must be valid ZIP");
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(decrypted_zip)).expect("Must be valid ZIP");
         assert!(archive.by_name("db.sqlite3").is_ok());
         assert!(archive.by_name("attachments/doc.pdf").is_ok());
         assert!(archive.by_name("sends/send.txt").is_ok());
