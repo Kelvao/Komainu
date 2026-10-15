@@ -30,6 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &config.rp_origin,
         store.clone(),
     )?);
+    auth_service.init_credential_tag().await;
 
     info!("Configurando adaptador Docker em '{}'...", config.docker_socket);
     let docker_adapter = Arc::new(DockerAdapter::new(&config.docker_socket));

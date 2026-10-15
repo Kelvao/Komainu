@@ -93,20 +93,27 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-fn is_authenticated(jar: &SignedCookieJar) -> bool {
+fn is_authenticated(jar: &SignedCookieJar, state: &AppState) -> bool {
     let cookie = match jar.get(SESSION_COOKIE) {
         Some(c) => c,
         None => return false,
     };
     let val = cookie.value();
-    if let Some(ts_str) = val.strip_prefix("admin:")
-        && let Ok(ts) = ts_str.parse::<u64>() {
+    let parts: Vec<&str> = val.split(':').collect();
+    if parts.len() == 3 && parts[0] == "admin" {
+        if let Ok(ts) = parts[1].parse::<u64>() {
+            let cookie_tag = parts[2];
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            return now.saturating_sub(ts) < SESSION_DURATION_SECS;
+            if now.saturating_sub(ts) >= SESSION_DURATION_SECS {
+                return false;
+            }
+            let current_tag = state.auth_service.credential_tag();
+            return !current_tag.is_empty() && cookie_tag == current_tag;
         }
+    }
     false
 }
 
@@ -175,7 +182,7 @@ async fn theme_css_asset_handler() -> impl IntoResponse {
 // ==========================================
 
 async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
-    if is_authenticated(&jar) {
+    if is_authenticated(&jar, &state) {
         return Redirect::to("/").into_response();
     }
 
@@ -513,7 +520,8 @@ async fn login_finish_handler(
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+            let tag = state.auth_service.credential_tag();
+            let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:{tag}"));
             cookie.set_path("/");
             cookie.set_http_only(true);
             cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
@@ -625,7 +633,8 @@ async fn qr_poll_handler(
     };
 
     if let Some(now) = state.auth_service.consume_approved_qr_session(qr_id).await {
-        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        let tag = state.auth_service.credential_tag();
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:{tag}"));
         cookie.set_path("/");
         cookie.set_http_only(true);
         cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
@@ -1166,7 +1175,7 @@ fn render_navbar(
 }
 
 async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return Redirect::to("/login").into_response();
     }
 
@@ -1218,7 +1227,7 @@ async fn backups_page(
     State(state): State<AppState>,
     Query(query): Query<BackupsPageQuery>,
 ) -> Response {
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return Redirect::to("/login").into_response();
     }
 
@@ -1294,7 +1303,7 @@ async fn backup_save_config_handler(
     axum::extract::Form(form): axum::extract::Form<BackupConfigForm>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
@@ -1374,7 +1383,7 @@ async fn pcloud_oauth_authorize_internal(
     client_id: Option<String>,
     client_secret: Option<String>,
 ) -> Response {
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return Redirect::to("/login").into_response();
     }
 
@@ -1439,7 +1448,7 @@ async fn pcloud_oauth_callback_handler(
     State(state): State<AppState>,
     Query(query): Query<PCloudCallbackQuery>,
 ) -> Response {
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return Redirect::to("/login").into_response();
     }
 
@@ -1563,7 +1572,7 @@ async fn pcloud_disconnect_handler(
     State(state): State<AppState>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
@@ -1580,7 +1589,7 @@ async fn backup_run_now_handler(
     State(state): State<AppState>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
@@ -1598,7 +1607,7 @@ async fn backup_fragment_handler(
     State(state): State<AppState>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         let mut headers = HeaderMap::new();
         headers.insert("HX-Redirect", "/login".parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
@@ -1619,7 +1628,7 @@ async fn backup_download_handler(
     Query(query): Query<BackupDownloadQuery>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
@@ -2233,7 +2242,7 @@ async fn render_backups_fragment(
 
 async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         let mut headers = HeaderMap::new();
         headers.insert("HX-Redirect", "/login".parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
@@ -2243,7 +2252,7 @@ async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<Ap
 
 async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.start().await.err().map(|e| e.to_localized(&i18n));
@@ -2252,7 +2261,7 @@ async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppSt
 
 async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.stop().await.err().map(|e| e.to_localized(&i18n));
@@ -2261,7 +2270,7 @@ async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppSta
 
 async fn container_restart_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.restart().await.err().map(|e| e.to_localized(&i18n));
@@ -2270,7 +2279,7 @@ async fn container_restart_handler(jar: SignedCookieJar, State(state): State<App
 
 async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.update_image().await.err().map(|e| e.to_localized(&i18n));
@@ -2279,7 +2288,7 @@ async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppS
 
 async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     let i18n = resolve_i18n(&jar, &state);
-    if !is_authenticated(&jar) {
+    if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
     let err = state.container_service.rebuild().await.err().map(|e| e.to_localized(&i18n));
@@ -3202,6 +3211,7 @@ mod tests {
         let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
         let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        auth_service.set_credential_tag("test_tag".to_string());
         let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
         let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
         let state = AppState {
@@ -3233,7 +3243,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let jar = SignedCookieJar::new(cookie_key);
-        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:test_tag"));
         cookie.set_path("/");
         let jar = jar.add(cookie);
         let cookie_res = (jar, StatusCode::OK).into_response();
@@ -3264,6 +3274,7 @@ mod tests {
         let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
         let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        auth_service.set_credential_tag("test_tag".to_string());
         let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
         let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
         let state = AppState {
@@ -3295,13 +3306,31 @@ mod tests {
         let res_unauth = router.clone().oneshot(req_unauth).await.unwrap();
         assert_eq!(res_unauth.status(), StatusCode::UNAUTHORIZED);
 
-        // 2. Authenticated POST /api/backups/config -> 200 with success banner
+        // 1b. Stale / revoked session cookie with old credential tag -> 401
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
+        let jar_stale = SignedCookieJar::new(cookie_key.clone());
+        let mut stale_cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:old_revoked_tag"));
+        stale_cookie.set_path("/");
+        let jar_stale = jar_stale.add(stale_cookie);
+        let stale_res = (jar_stale, StatusCode::OK).into_response();
+        let stale_cookie_str = stale_res.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap();
+
+        let req_stale = Request::builder()
+            .uri("/api/backups/config")
+            .method("POST")
+            .header("cookie", stale_cookie_str)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("enabled=on&cron_expression=0+3+*+*+*"))
+            .unwrap();
+        let res_stale = router.clone().oneshot(req_stale).await.unwrap();
+        assert_eq!(res_stale.status(), StatusCode::UNAUTHORIZED);
+
+        // 2. Authenticated POST /api/backups/config -> 200 with success banner
         let jar = SignedCookieJar::new(cookie_key);
-        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:test_tag"));
         cookie.set_path("/");
         let jar = jar.add(cookie);
         let cookie_res = (jar, StatusCode::OK).into_response();
