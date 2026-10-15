@@ -73,6 +73,7 @@ pub async fn login_finish_handler(
             cookie.set_http_only(true);
             cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
             cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+            cookie.set_secure(state.rp_origin.starts_with("https://"));
 
             let jar = jar.add(cookie);
             (jar, state.i18n.common.authenticated_success.clone()).into_response()
@@ -182,6 +183,7 @@ pub async fn qr_poll_handler(
         cookie.set_http_only(true);
         cookie.set_max_age(Some(time::Duration::seconds(SESSION_DURATION_SECS as i64)));
         cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+        cookie.set_secure(state.rp_origin.starts_with("https://"));
 
         let jar = jar.add(cookie);
         return (jar, Json(QrPollResponse { status: "approved" })).into_response();
