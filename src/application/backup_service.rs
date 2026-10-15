@@ -25,6 +25,8 @@ impl Drop for BackupRunningGuard {
     }
 }
 
+type RemoteFilesCache = Arc<Mutex<Option<(Instant, Vec<PCloudRemoteFile>)>>>;
+
 pub struct BackupService {
     container_port: Arc<dyn ContainerPort>,
     config_store: Arc<dyn BackupConfigStorePort>,
@@ -33,6 +35,7 @@ pub struct BackupService {
     vw_data_path: PathBuf,
     is_running: Arc<AtomicBool>,
     last_run_minute: Arc<Mutex<Option<i64>>>,
+    remote_files_cache: RemoteFilesCache,
 }
 
 impl BackupService {
@@ -51,6 +54,7 @@ impl BackupService {
             vw_data_path: vw_data_path.as_ref().to_path_buf(),
             is_running: Arc::new(AtomicBool::new(false)),
             last_run_minute: Arc::new(Mutex::new(None)),
+            remote_files_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -68,6 +72,7 @@ impl BackupService {
                     .map_err(|e| BackupError::ConfigError(format!("Invalid cron expression '{expr}': {e}")))?;
             }
         }
+        self.invalidate_remote_cache().await;
         self.config_store.save_config(config).await
     }
 
@@ -75,14 +80,31 @@ impl BackupService {
         self.config_store.load_history().await
     }
 
+    pub async fn invalidate_remote_cache(&self) {
+        let mut cache = self.remote_files_cache.lock().await;
+        *cache = None;
+    }
+
     pub async fn list_remote_backups(&self) -> Result<Vec<PCloudRemoteFile>, BackupError> {
+        {
+            let cache = self.remote_files_cache.lock().await;
+            if let Some((ts, ref files)) = *cache
+                && ts.elapsed() < std::time::Duration::from_secs(45) {
+                    return Ok(files.clone());
+                }
+        }
+
         let config = self.config_store.load_config().await?;
         if config.pcloud_token.trim().is_empty() {
             return Ok(Vec::new());
         }
-        self.pcloud_client
+        let files = self.pcloud_client
             .list_folder(&config.pcloud_region, &config.pcloud_token, &config.pcloud_folder)
-            .await
+            .await?;
+
+        let mut cache = self.remote_files_cache.lock().await;
+        *cache = Some((Instant::now(), files.clone()));
+        Ok(files)
     }
 
     pub async fn download_and_decrypt_backup(
@@ -280,6 +302,7 @@ impl BackupService {
         };
 
         let _ = self.config_store.add_record(record.clone()).await;
+        self.invalidate_remote_cache().await;
         info!("Backup completed and uploaded successfully: {}", filename);
         Ok(record)
     }
