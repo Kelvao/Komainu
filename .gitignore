@@ -3,5 +3,6 @@
 .env
 credentials.json
 .hallmark/
+.audit/
 SECURITY_AUDIT.md
 PERFORMANCE_AUDIT.md
