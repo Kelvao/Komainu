@@ -25,31 +25,46 @@ impl Default for SysinfoAdapter {
 }
 
 fn read_cpu_ticks() -> Option<(u64, u64)> {
-    let content = fs::read_to_string("/proc/stat").ok()?;
-    let first_line = content.lines().next()?;
+    use std::io::Read;
+    let mut file = fs::File::open("/proc/stat").ok()?;
+    let mut buf = [0u8; 1024];
+    let n = file.read(&mut buf).ok()?;
+    let text = std::str::from_utf8(&buf[..n]).ok()?;
+    let first_line = text.lines().next()?;
     if !first_line.starts_with("cpu ") {
         return None;
     }
-    let parts: Vec<u64> = first_line
-        .split_whitespace()
-        .skip(1)
-        .filter_map(|s| s.parse::<u64>().ok())
-        .collect();
-    if parts.len() < 4 {
+    let mut parts = [0u64; 10];
+    let mut count = 0;
+    for token in first_line.split_whitespace().skip(1) {
+        if count < parts.len()
+            && let Ok(val) = token.parse::<u64>() {
+                parts[count] = val;
+                count += 1;
+            }
+    }
+    if count < 4 {
         return None;
     }
     // user, nice, system, idle, iowait, irq, softirq, steal
-    let idle = parts[3] + parts.get(4).copied().unwrap_or(0);
-    let total: u64 = parts.iter().sum();
+    let idle = parts[3] + parts[4];
+    let total: u64 = parts[..count].iter().sum();
     let work = total.saturating_sub(idle);
     Some((work, total))
 }
 
 fn read_mem_mb() -> (u64, u64) {
-    let content = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    use std::io::Read;
+    let mut file = match fs::File::open("/proc/meminfo") {
+        Ok(f) => f,
+        Err(_) => return (0, 0),
+    };
+    let mut buf = [0u8; 2048];
+    let n = file.read(&mut buf).unwrap_or(0);
+    let text = std::str::from_utf8(&buf[..n]).unwrap_or_default();
     let mut total_kb = 0u64;
     let mut avail_kb = 0u64;
-    for line in content.lines() {
+    for line in text.lines() {
         if let Some(val) = line.strip_prefix("MemTotal:") {
             if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
                 total_kb = num;
