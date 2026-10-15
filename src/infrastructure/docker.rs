@@ -1,5 +1,5 @@
 use crate::domain::container::{BoxFuture, ContainerError, ContainerPort, ContainerState, ContainerStatus};
-use bollard::container::{CreateContainerOptions, RenameContainerOptions, StatsOptions};
+use bollard::container::{CreateContainerOptions, RemoveContainerOptions, RenameContainerOptions, StatsOptions};
 use bollard::image::CreateImageOptions;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -280,7 +280,8 @@ impl ContainerPort for DockerAdapter {
 
             // 4. Renomear container antigo para backup temporário em vez de destruí-lo prematuramente
             let backup_name = format!("{}_rebuild_bak", name);
-            let _ = docker.remove_container(&backup_name, None).await;
+            let force_remove = Some(RemoveContainerOptions { force: true, ..Default::default() });
+            let _ = docker.remove_container(&backup_name, force_remove).await;
             docker
                 .rename_container(&name, RenameContainerOptions { name: backup_name.clone() })
                 .await
@@ -329,7 +330,10 @@ impl ContainerPort for DockerAdapter {
                 execute_rollback(
                     true,
                     was_running,
-                    || async { docker.remove_container(&name, None).await.map_err(|e| e.to_string()) },
+                    || async {
+                        let force_remove = Some(RemoveContainerOptions { force: true, ..Default::default() });
+                        docker.remove_container(&name, force_remove).await.map_err(|e| e.to_string())
+                    },
                     || async { docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await.map_err(|e| e.to_string()) },
                     || async { docker.start_container::<String>(&name, None).await.map_err(|e| e.to_string()) },
                 ).await;
@@ -337,7 +341,8 @@ impl ContainerPort for DockerAdapter {
             }
 
             // 7. Sucesso confirmado: remover backup com segurança
-            let _ = docker.remove_container(&backup_name, None).await;
+            let force_remove = Some(RemoveContainerOptions { force: true, ..Default::default() });
+            let _ = docker.remove_container(&backup_name, force_remove).await;
 
             Ok(())
         })
