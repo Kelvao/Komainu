@@ -5,6 +5,7 @@ use axum::routing::{get, post};
 use axum::Router;
 
 use crate::infrastructure::http::handlers::*;
+use crate::infrastructure::http::rate_limit::{rate_limit_middleware, RateLimiter};
 use crate::infrastructure::http::AppState;
 
 pub async fn security_headers_middleware(request: Request, next: Next) -> Response {
@@ -23,6 +24,22 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
 }
 
 pub fn create_router(state: AppState) -> Router {
+    let auth_limiter = RateLimiter::new(60, std::time::Duration::from_secs(60));
+
+    let auth_routes = Router::new()
+        .route("/login_start", get(login_start_handler))
+        .route("/login_finish", post(login_finish_handler))
+        .route("/qr_start", get(qr_start_handler))
+        .route("/qr_poll", get(qr_poll_handler))
+        .route("/qr_mobile_start", get(qr_mobile_start_handler))
+        .route("/qr_mobile_finish", post(qr_mobile_finish_handler))
+        .route("/register_start", get(register_start_handler))
+        .route("/register_finish", post(register_finish_handler))
+        .layer(from_fn(move |req, next| {
+            let limiter = auth_limiter.clone();
+            async move { rate_limit_middleware(limiter, req, next).await }
+        }));
+
     Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
@@ -31,16 +48,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/set-lang", get(set_lang_handler))
         .route("/login", get(login_page))
         .route("/logout", post(logout_handler).get(logout_handler))
-        .route("/api/auth/login_start", get(login_start_handler))
-        .route("/api/auth/login_finish", post(login_finish_handler))
-        .route("/api/auth/qr_start", get(qr_start_handler))
-        .route("/api/auth/qr_poll", get(qr_poll_handler))
         .route("/qr-login", get(qr_login_page))
-        .route("/api/auth/qr_mobile_start", get(qr_mobile_start_handler))
-        .route("/api/auth/qr_mobile_finish", post(qr_mobile_finish_handler))
         .route("/register", get(register_page))
-        .route("/api/auth/register_start", get(register_start_handler))
-        .route("/api/auth/register_finish", post(register_finish_handler))
+        .nest("/api/auth", auth_routes)
         // Rotas protegidas por sessão
         .route("/", get(dashboard_page))
         .route("/backups", get(backups_page))

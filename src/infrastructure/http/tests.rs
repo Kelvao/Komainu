@@ -870,4 +870,15 @@ async fn test_security_headers_middleware() {
     assert!(csp.contains("default-src 'self'"));
 }
 
+#[tokio::test]
+async fn test_rate_limiter_blocks_excessive_requests() {
+    let limiter = crate::infrastructure::http::rate_limit::RateLimiter::new(3, std::time::Duration::from_secs(60));
+    assert!(limiter.check("1.2.3.4"));
+    assert!(limiter.check("1.2.3.4"));
+    assert!(limiter.check("1.2.3.4"));
+    assert!(!limiter.check("1.2.3.4")); // 4th request blocked
+    assert!(limiter.check("5.6.7.8")); // different IP allowed
+}
+
+
 
