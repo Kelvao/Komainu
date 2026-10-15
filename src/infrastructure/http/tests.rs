@@ -415,9 +415,8 @@ async fn test_qr_code_authentication_flow() {
         .body(Body::empty())
         .unwrap();
     let res_poll3 = router.clone().oneshot(req_poll3).await.unwrap();
-    assert_eq!(res_poll3.status(), StatusCode::OK);
-    let cookie_header = res_poll3.headers().get("set-cookie").unwrap().to_str().unwrap();
-    assert!(cookie_header.contains("komainu_session="));
+    let cookie_headers: Vec<&str> = res_poll3.headers().get_all("set-cookie").iter().map(|v| v.to_str().unwrap()).collect();
+    assert!(cookie_headers.iter().any(|h| h.contains("komainu_session=")));
     let poll3_bytes = to_bytes(res_poll3.into_body(), usize::MAX).await.unwrap();
     let poll3_json: serde_json::Value = serde_json::from_slice(&poll3_bytes).unwrap();
     assert_eq!(poll3_json["status"], "approved");

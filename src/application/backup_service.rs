@@ -383,6 +383,10 @@ impl BackupService {
         let mut newest_file: Option<(PathBuf, std::time::SystemTime)> = None;
 
         for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_symlink() {
+                    continue;
+                }
             let path = entry.path();
             if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                 && file_name.starts_with("db_") && file_name.ends_with(".sqlite3") {
@@ -419,6 +423,10 @@ impl BackupService {
 
         // 1. db.sqlite3
         if sqlite_path.exists() {
+            if let Ok(meta) = fs::symlink_metadata(sqlite_path)
+                && meta.file_type().is_symlink() {
+                    return Err(BackupError::IoError("Sqlite database snapshot cannot be a symlink".to_string()));
+                }
             let db_file = fs::File::open(sqlite_path)
                 .map_err(|e| BackupError::IoError(format!("Failed to open database file: {e}")))?;
             let mut db_reader = std::io::BufReader::with_capacity(64 * 1024, db_file);
@@ -432,46 +440,53 @@ impl BackupService {
             }
         }
 
-        // 2. attachments/
-        let attachments_dir = vw_data_path.join("attachments");
-        if attachments_dir.is_dir() {
-            Self::add_directory_to_zip(&mut zip, &attachments_dir, "attachments", options)?;
-        }
-
-        // 3. sends/
-        let sends_dir = vw_data_path.join("sends");
-        if sends_dir.is_dir() {
-            Self::add_directory_to_zip(&mut zip, &sends_dir, "sends", options)?;
-        }
-
-        // 4. templates/
-        let templates_dir = vw_data_path.join("templates");
-        if templates_dir.is_dir() {
-            Self::add_directory_to_zip(&mut zip, &templates_dir, "templates", options)?;
+        // 2-4. attachments/, sends/, templates/
+        for dir_name in &["attachments", "sends", "templates"] {
+            let sub_dir = vw_data_path.join(dir_name);
+            if let Ok(meta) = fs::symlink_metadata(&sub_dir) {
+                if meta.file_type().is_symlink() {
+                    tracing::warn!("Ignoring symlink root directory in backup: {:?}", sub_dir);
+                    continue;
+                }
+                if meta.is_dir() {
+                    Self::add_directory_to_zip(&mut zip, &sub_dir, dir_name, options)?;
+                }
+            }
         }
 
         // 5. rsa_key files
         if let Ok(entries) = fs::read_dir(vw_data_path) {
             for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && name.starts_with("rsa_key") && path.is_file()
-                        && let Ok(mut key_file) = fs::File::open(&path)
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_symlink() {
+                        continue;
+                    }
+                    let path = entry.path();
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                        && name.starts_with("rsa_key") && file_type.is_file()
+                            && let Ok(mut key_file) = fs::File::open(&path)
                             && zip.start_file(name, options).is_ok() {
                                 let _ = std::io::copy(&mut key_file, &mut zip);
                             }
+                }
             }
         }
 
         // 6. vaultwarden.env or .env inside vw_data_path
         for env_name in &["vaultwarden.env", ".env"] {
             let env_candidate = vw_data_path.join(env_name);
-            if env_candidate.is_file()
-                && let Ok(mut env_file) = fs::File::open(&env_candidate)
+            if let Ok(meta) = fs::symlink_metadata(&env_candidate) {
+                if meta.file_type().is_symlink() {
+                    tracing::warn!("Ignoring symlink env file in backup: {:?}", env_candidate);
+                    continue;
+                }
+                if meta.is_file()
+                    && let Ok(mut env_file) = fs::File::open(&env_candidate)
                     && zip.start_file(*env_name, options).is_ok() {
                         let _ = std::io::copy(&mut env_file, &mut zip);
                         break;
                     }
+            }
         }
 
         let mut writer = zip.finish()
@@ -497,6 +512,16 @@ impl BackupService {
         };
 
         for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            if file_type.is_symlink() {
+                tracing::warn!("Ignoring symlink in backup source directory: {:?}", entry.path());
+                continue;
+            }
+
             let path = entry.path();
             let file_name = match path.file_name().and_then(|n| n.to_str()) {
                 Some(n) => n,
@@ -504,9 +529,9 @@ impl BackupService {
             };
             let zip_path = format!("{}/{}", zip_prefix, file_name);
 
-            if path.is_dir() {
+            if file_type.is_dir() {
                 Self::add_directory_to_zip(zip, &path, &zip_path, options)?;
-            } else if path.is_file() {
+            } else if file_type.is_file() {
                 let file_options = if is_already_compressed(&path) {
                     options.compression_method(zip::CompressionMethod::Stored)
                 } else {
@@ -727,6 +752,15 @@ mod tests {
         fs::write(data_dir.join("rsa_key.pem"), b"RSA_KEY_PEM_CONTENT").unwrap();
         fs::write(&env_file, b"SIGNUPS_ALLOWED=false\nADMIN_TOKEN=secret").unwrap();
 
+        // Host secret outside data dir, and symlinks pointing to it (SEC-12)
+        let host_secret_file = tmp_root.join("host_secret.txt");
+        fs::write(&host_secret_file, b"SUPER_SECRET_HOST_DATA").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&host_secret_file, data_dir.join("attachments").join("symlink_leak.txt")).unwrap();
+            std::os::unix::fs::symlink(&host_secret_file, data_dir.join("rsa_key_symlink.pem")).unwrap();
+        }
+
         let container_port = Arc::new(MockContainer);
         let config_store = Arc::new(MockConfigStore {
             cfg: std::sync::Mutex::new(BackupConfig {
@@ -789,6 +823,12 @@ mod tests {
         assert!(archive.by_name("sends/send.txt").is_ok());
         assert!(archive.by_name("rsa_key.pem").is_ok());
         assert!(archive.by_name("vaultwarden.env").is_ok());
+
+        #[cfg(unix)]
+        {
+            assert!(archive.by_name("attachments/symlink_leak.txt").is_err(), "Symlink in attachments must not be included");
+            assert!(archive.by_name("rsa_key_symlink.pem").is_err(), "Symlink rsa_key must not be included");
+        }
 
         // Verify decryption of the uploaded data directly
         let encrypted_bytes = pcloud_client.last_uploaded_data.lock().unwrap().clone();
