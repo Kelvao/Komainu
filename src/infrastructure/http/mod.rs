@@ -1616,7 +1616,7 @@ async fn backup_download_handler(
         return (StatusCode::BAD_REQUEST, i18n.common.operation_failed.clone()).into_response();
     }
 
-    let temp_dec_path = std::env::temp_dir().join(format!("komainu_dl_{}_{}.zip", query.fileid, Uuid::new_v4()));
+    let temp_dec_path = crate::application::backup_service::komainu_temp_dir().join(format!("komainu_dl_{}_{}.zip", query.fileid, Uuid::new_v4()));
     let _guard = crate::domain::backup::TempFileGuard(temp_dec_path.clone());
 
     if let Err(e) = state

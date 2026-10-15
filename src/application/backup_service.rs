@@ -40,6 +40,28 @@ pub(crate) fn is_already_compressed(path: &Path) -> bool {
     )
 }
 
+pub fn komainu_temp_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("KOMAINU_TEMP_DIR") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            let p = PathBuf::from(trimmed);
+            if fs::create_dir_all(&p).is_ok() {
+                return p;
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        let var_tmp = PathBuf::from("/var/tmp/komainu");
+        if fs::create_dir_all(&var_tmp).is_ok() {
+            return var_tmp;
+        }
+    }
+
+    std::env::temp_dir()
+}
+
 type RemoteFilesCache = Arc<Mutex<Option<(Instant, Vec<PCloudRemoteFile>)>>>;
 
 pub struct BackupService {
@@ -139,7 +161,7 @@ impl BackupService {
             ));
         }
 
-        let temp_enc_path = std::env::temp_dir().join(format!("vw_dl_enc_{}_{}.tmp", fileid, Uuid::new_v4()));
+        let temp_enc_path = komainu_temp_dir().join(format!("vw_dl_enc_{}_{}.tmp", fileid, Uuid::new_v4()));
         let _enc_guard = TempFileGuard(temp_enc_path.clone());
 
         self.pcloud_client
@@ -247,7 +269,7 @@ impl BackupService {
         };
 
         // 3. Compactar no arquivo ZIP gravando em arquivo temporário no disco
-        let temp_zip_path = std::env::temp_dir().join(format!("vw_backup_{}.zip", record_id));
+        let temp_zip_path = komainu_temp_dir().join(format!("vw_backup_{}.zip", record_id));
         let _temp_zip_guard = TempFileGuard(temp_zip_path.clone());
 
         info!("Packaging assets into temporary archive on disk...");
@@ -265,7 +287,7 @@ impl BackupService {
         }
 
         // 4. Criptografar com AES-256-GCM via streaming em arquivo temporário (64KB de RAM)
-        let temp_enc_path = std::env::temp_dir().join(format!("vw_backup_{}.enc", record_id));
+        let temp_enc_path = komainu_temp_dir().join(format!("vw_backup_{}.enc", record_id));
         let _temp_enc_guard = TempFileGuard(temp_enc_path.clone());
 
         info!("Encrypting backup archive with AES-256-GCM...");
@@ -765,5 +787,22 @@ mod tests {
         assert!(!is_already_compressed(Path::new("notes.txt")));
         assert!(!is_already_compressed(Path::new("db.sqlite3")));
         assert!(!is_already_compressed(Path::new("vaultwarden.env")));
+    }
+
+    #[test]
+    fn test_komainu_temp_dir() {
+        let temp_dir = komainu_temp_dir();
+        assert!(temp_dir.exists());
+
+        // Test with custom env var
+        let custom_dir = std::env::temp_dir().join("komainu_custom_temp_test");
+        unsafe {
+            std::env::set_var("KOMAINU_TEMP_DIR", &custom_dir);
+        }
+        assert_eq!(komainu_temp_dir(), custom_dir);
+        unsafe {
+            std::env::remove_var("KOMAINU_TEMP_DIR");
+        }
+        let _ = fs::remove_dir_all(&custom_dir);
     }
 }
