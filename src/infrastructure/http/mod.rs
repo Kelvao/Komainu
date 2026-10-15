@@ -1915,13 +1915,72 @@ mod tests {
             .uri(format!("/api/auth/qr_poll?id={qr_id}"))
             .body(Body::empty())
             .unwrap();
-        let res_poll3 = router.oneshot(req_poll3).await.unwrap();
+        let res_poll3 = router.clone().oneshot(req_poll3).await.unwrap();
         assert_eq!(res_poll3.status(), StatusCode::OK);
         let cookie_header = res_poll3.headers().get("set-cookie").unwrap().to_str().unwrap();
         assert!(cookie_header.contains("komainu_session="));
         let poll3_bytes = to_bytes(res_poll3.into_body(), usize::MAX).await.unwrap();
         let poll3_json: serde_json::Value = serde_json::from_slice(&poll3_bytes).unwrap();
         assert_eq!(poll3_json["status"], "approved");
+
+        // 7. Próximo polling deve retornar "expired" pois a sessão foi consumida
+        let req_poll4 = Request::builder()
+            .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+            .body(Body::empty())
+            .unwrap();
+        let res_poll4 = router.clone().oneshot(req_poll4).await.unwrap();
+        assert_eq!(res_poll4.status(), StatusCode::OK);
+        let poll4_bytes = to_bytes(res_poll4.into_body(), usize::MAX).await.unwrap();
+        let poll4_json: serde_json::Value = serde_json::from_slice(&poll4_bytes).unwrap();
+        assert_eq!(poll4_json["status"], "expired");
+    }
+
+    #[tokio::test]
+    async fn test_qr_mobile_error_handling() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key,
+            i18n,
+            base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
+        };
+
+        let router = create_router(state);
+
+        // 1. qr_mobile_start sem parâmetro token -> 400 Bad Request
+        let req_no_token = Request::builder()
+            .uri("/api/auth/qr_mobile_start")
+            .body(Body::empty())
+            .unwrap();
+        let res_no_token = router.clone().oneshot(req_no_token).await.unwrap();
+        assert_eq!(res_no_token.status(), StatusCode::BAD_REQUEST);
+
+        // 2. qr_mobile_start com token inválido -> 400 Bad Request
+        let req_invalid = Request::builder()
+            .uri("/api/auth/qr_mobile_start?token=not-a-uuid")
+            .body(Body::empty())
+            .unwrap();
+        let res_invalid = router.clone().oneshot(req_invalid).await.unwrap();
+        assert_eq!(res_invalid.status(), StatusCode::BAD_REQUEST);
+
+        // 3. qr_poll sem id -> 400 Bad Request
+        let req_poll_no_id = Request::builder()
+            .uri("/api/auth/qr_poll")
+            .body(Body::empty())
+            .unwrap();
+        let res_poll_no_id = router.oneshot(req_poll_no_id).await.unwrap();
+        assert_eq!(res_poll_no_id.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
