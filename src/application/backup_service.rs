@@ -25,6 +25,21 @@ impl Drop for BackupRunningGuard {
     }
 }
 
+pub(crate) fn is_already_compressed(path: &Path) -> bool {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => e.to_ascii_lowercase(),
+        None => return false,
+    };
+    matches!(
+        ext.as_str(),
+        "zip" | "gz" | "tgz" | "bz2" | "xz" | "7z" | "rar"
+            | "png" | "jpg" | "jpeg" | "webp" | "gif" | "ico"
+            | "mp4" | "mkv" | "webm" | "avi" | "mov" | "mp3" | "ogg" | "flac" | "aac"
+            | "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp"
+            | "apk" | "jar" | "deb" | "rpm" | "iso"
+    )
+}
+
 type RemoteFilesCache = Arc<Mutex<Option<(Instant, Vec<PCloudRemoteFile>)>>>;
 
 pub struct BackupService {
@@ -447,12 +462,18 @@ impl BackupService {
 
             if path.is_dir() {
                 self.add_directory_to_zip(zip, &path, &zip_path, options)?;
-            } else if path.is_file()
-                && let Ok(file) = fs::File::open(&path)
-                && zip.start_file(zip_path, options).is_ok() {
-                    let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
-                    let _ = std::io::copy(&mut reader, zip);
-                }
+            } else if path.is_file() {
+                let file_options = if is_already_compressed(&path) {
+                    options.compression_method(zip::CompressionMethod::Stored)
+                } else {
+                    options
+                };
+                if let Ok(file) = fs::File::open(&path)
+                    && zip.start_file(zip_path, file_options).is_ok() {
+                        let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+                        let _ = std::io::copy(&mut reader, zip);
+                    }
+            }
         }
 
         Ok(())
@@ -733,5 +754,16 @@ mod tests {
         assert!(archive2.by_name("db.sqlite3").is_ok());
 
         let _ = fs::remove_dir_all(&tmp_root);
+    }
+
+    #[test]
+    fn test_is_already_compressed() {
+        assert!(is_already_compressed(Path::new("photo.jpg")));
+        assert!(is_already_compressed(Path::new("doc.pdf")));
+        assert!(is_already_compressed(Path::new("archive.zip")));
+        assert!(is_already_compressed(Path::new("clip.MP4")));
+        assert!(!is_already_compressed(Path::new("notes.txt")));
+        assert!(!is_already_compressed(Path::new("db.sqlite3")));
+        assert!(!is_already_compressed(Path::new("vaultwarden.env")));
     }
 }
