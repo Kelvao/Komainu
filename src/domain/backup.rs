@@ -130,6 +130,90 @@ pub fn encrypt_aes_256_gcm(data: &[u8], password: &str) -> Result<Vec<u8>, Backu
     Ok(out)
 }
 
+/// Stream-encrypt a file on disk using AES-256-GCM.
+/// Memory usage is constant (bounded to a 64KB buffer) regardless of file size.
+pub fn encrypt_file_aes_256_gcm(
+    src_path: &std::path::Path,
+    dst_path: &std::path::Path,
+    password: &str,
+) -> Result<u64, BackupError> {
+    use std::fs::File;
+    use std::io::{Read, Seek, SeekFrom, Write};
+    use openssl::hash::MessageDigest;
+    use openssl::pkcs5::pbkdf2_hmac;
+    use openssl::rand::rand_bytes;
+    use openssl::symm::{Cipher, Crypter, Mode};
+
+    if password.is_empty() {
+        return Err(BackupError::EncryptionError("Encryption password cannot be empty".to_string()));
+    }
+
+    let mut salt = [0u8; 16];
+    rand_bytes(&mut salt).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let mut key = [0u8; 32];
+    pbkdf2_hmac(password.as_bytes(), &salt, 100_000, MessageDigest::sha256(), &mut key)
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let mut nonce = [0u8; 12];
+    rand_bytes(&mut nonce).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let mut in_file = File::open(src_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?;
+    let mut out_file = File::create(dst_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to create encrypted file: {e}")))?;
+
+    // Write header: salt (16), nonce (12), placeholder tag (16)
+    out_file.write_all(&salt)
+        .map_err(|e| BackupError::IoError(format!("Failed to write salt: {e}")))?;
+    out_file.write_all(&nonce)
+        .map_err(|e| BackupError::IoError(format!("Failed to write nonce: {e}")))?;
+    let placeholder_tag = [0u8; 16];
+    out_file.write_all(&placeholder_tag)
+        .map_err(|e| BackupError::IoError(format!("Failed to write placeholder tag: {e}")))?;
+
+    let cipher = Cipher::aes_256_gcm();
+    let mut crypter = Crypter::new(cipher, Mode::Encrypt, &key, Some(&nonce))
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let mut in_buf = [0u8; 64 * 1024];
+    let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
+
+    loop {
+        let n = in_file.read(&mut in_buf)
+            .map_err(|e| BackupError::IoError(format!("Failed reading input for encryption: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        let count = crypter.update(&in_buf[..n], &mut out_buf)
+            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+        out_file.write_all(&out_buf[..count])
+            .map_err(|e| BackupError::IoError(format!("Failed writing ciphertext chunk: {e}")))?;
+    }
+
+    let final_count = crypter.finalize(&mut out_buf)
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    if final_count > 0 {
+        out_file.write_all(&out_buf[..final_count])
+            .map_err(|e| BackupError::IoError(format!("Failed writing final ciphertext chunk: {e}")))?;
+    }
+
+    let mut tag = [0u8; 16];
+    crypter.get_tag(&mut tag)
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    // Seek back to tag position (offset 28) and write actual auth tag
+    out_file.seek(SeekFrom::Start(28))
+        .map_err(|e| BackupError::IoError(format!("Failed to seek to tag offset: {e}")))?;
+    out_file.write_all(&tag)
+        .map_err(|e| BackupError::IoError(format!("Failed to write auth tag: {e}")))?;
+    out_file.flush()
+        .map_err(|e| BackupError::IoError(format!("Failed to flush encrypted file: {e}")))?;
+
+    let total_len = out_file.metadata().map(|m| m.len()).unwrap_or(0);
+    Ok(total_len)
+}
+
 /// Decrypt data produced by `encrypt_aes_256_gcm`
 pub fn decrypt_aes_256_gcm(payload: &[u8], password: &str) -> Result<Vec<u8>, BackupError> {
     use openssl::hash::MessageDigest;
@@ -197,6 +281,30 @@ mod tests {
         let encrypted = encrypt_aes_256_gcm(original_data, "correct-pass").unwrap();
         let result = decrypt_aes_256_gcm(&encrypted, "wrong-pass");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encrypt_file_aes_256_gcm_roundtrip() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("test_enc_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("plain.bin");
+        let dst = dir.join("cipher.bin");
+
+        let original_data = vec![42u8; 150_000]; // 150KB to test multi-chunk encryption
+        let mut f = std::fs::File::create(&src).unwrap();
+        f.write_all(&original_data).unwrap();
+        drop(f);
+
+        let pass = "test-strong-password";
+        let written = encrypt_file_aes_256_gcm(&src, &dst, pass).expect("File encryption failed");
+        assert!(written > original_data.len() as u64);
+
+        let encrypted_bytes = std::fs::read(&dst).unwrap();
+        let decrypted = decrypt_aes_256_gcm(&encrypted_bytes, pass).expect("Decryption failed");
+        assert_eq!(decrypted, original_data);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

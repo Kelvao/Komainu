@@ -1,5 +1,5 @@
 use crate::domain::backup::{
-    encrypt_aes_256_gcm, BackupConfig, BackupConfigStorePort, BackupError, BackupRecord,
+    encrypt_file_aes_256_gcm, BackupConfig, BackupConfigStorePort, BackupError, BackupRecord,
     BackupStatus, PCloudClientPort,
 };
 use crate::domain::container::ContainerPort;
@@ -192,26 +192,28 @@ impl BackupService {
             let _ = fs::remove_file(&sqlite_file_path);
         }
 
-        let zip_bytes = match fs::read(&temp_zip_path) {
-            Ok(bytes) => bytes,
+        // 4. Criptografar com AES-256-GCM via streaming em arquivo temporário (64KB de RAM)
+        let temp_enc_path = std::env::temp_dir().join(format!("vw_backup_{}.enc", record_id));
+        let _temp_enc_guard = TempFileGuard(temp_enc_path.clone());
+
+        info!("Encrypting backup archive with AES-256-GCM...");
+        if let Err(e) = encrypt_file_aes_256_gcm(&temp_zip_path, &temp_enc_path, &config.encryption_password) {
+            self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
+            return Err(e);
+        }
+
+        // Deleta o arquivo zip temporário imediatamente para liberar espaço no disco
+        drop(_temp_zip_guard);
+
+        let encrypted_data = match fs::read(&temp_enc_path) {
+            Ok(data) => data,
             Err(e) => {
-                let err = BackupError::IoError(format!("Failed to read temporary backup zip: {e}"));
+                let err = BackupError::IoError(format!("Failed to read encrypted backup: {e}"));
                 self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
                 return Err(err);
             }
         };
-        drop(_temp_zip_guard);
-
-        // 4. Criptografar com AES-256-GCM
-        info!("Encrypting backup archive with AES-256-GCM...");
-        let encrypted_data = match encrypt_aes_256_gcm(&zip_bytes, &config.encryption_password) {
-            Ok(enc) => enc,
-            Err(e) => {
-                self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
-                return Err(e);
-            }
-        };
-        drop(zip_bytes);
+        drop(_temp_enc_guard);
 
         let file_size = encrypted_data.len() as u64;
 
