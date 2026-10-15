@@ -317,27 +317,19 @@ impl BackupService {
         }
 
         // Deleta o arquivo zip temporário imediatamente para liberar espaço no disco
+        // Deleta o arquivo zip temporário imediatamente para liberar espaço no disco
         drop(_temp_zip_guard);
 
-        let temp_enc_path_clone2 = temp_enc_path.clone();
-        let encrypted_data = match tokio::task::spawn_blocking(move || fs::read(&temp_enc_path_clone2)).await {
-            Ok(Ok(data)) => data,
-            Ok(Err(e)) => {
-                let err = BackupError::IoError(format!("Failed to read encrypted backup: {e}"));
-                self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
-                return Err(err);
-            }
+        let file_size = match std::fs::metadata(&temp_enc_path) {
+            Ok(meta) => meta.len(),
             Err(e) => {
-                let err = BackupError::IoError(format!("Read task failed: {e}"));
+                let err = BackupError::IoError(format!("Failed to read encrypted backup metadata: {e}"));
                 self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
                 return Err(err);
             }
         };
-        drop(_temp_enc_guard);
 
-        let file_size = encrypted_data.len() as u64;
-
-        // 5. Enviar para a API do pCloud
+        // 5. Enviar para a API do pCloud via streaming direto do disco
         info!("Uploading encrypted archive ({} bytes) to pCloud...", file_size);
         if let Err(e) = self
             .pcloud_client
@@ -346,13 +338,14 @@ impl BackupService {
                 &config.pcloud_token,
                 &config.pcloud_folder,
                 &filename,
-                encrypted_data,
+                &temp_enc_path,
             )
             .await
         {
             self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
             return Err(e);
         }
+        drop(_temp_enc_guard);
 
         let duration_secs = start_time.elapsed().as_secs();
         let record = BackupRecord {
@@ -678,10 +671,11 @@ mod tests {
             _token: &str,
             _folder: &str,
             _filename: &str,
-            data: Vec<u8>,
+            file_path: &std::path::Path,
         ) -> BoxFuture<'_, Result<(), BackupError>> {
             self.uploads.fetch_add(1, Ordering::SeqCst);
-            *self.last_uploaded_data.lock().unwrap() = data;
+            let content = std::fs::read(file_path).unwrap_or_default();
+            *self.last_uploaded_data.lock().unwrap() = content;
             Box::pin(async { Ok(()) })
         }
 

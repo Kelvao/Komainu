@@ -2749,7 +2749,7 @@ mod tests {
             _token: &str,
             _folder: &str,
             _filename: &str,
-            _data: Vec<u8>,
+            _file_path: &std::path::Path,
         ) -> BoxFuture<'_, Result<(), BackupError>> {
             Box::pin(async move { Ok(()) })
         }

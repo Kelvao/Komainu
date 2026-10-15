@@ -365,7 +365,7 @@ pub trait PCloudClientPort: Send + Sync {
         token: &str,
         folder: &str,
         filename: &str,
-        data: Vec<u8>,
+        file_path: &std::path::Path,
     ) -> BoxFuture<'_, Result<(), BackupError>>;
 
     fn list_folder(

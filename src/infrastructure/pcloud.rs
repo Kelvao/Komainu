@@ -29,6 +29,45 @@ struct PCloudUploadResponse {
     error: Option<String>,
 }
 
+struct FileStreamBody {
+    stream: std::sync::Mutex<tokio_util::io::ReaderStream<tokio::fs::File>>,
+    len: u64,
+}
+
+impl FileStreamBody {
+    fn new(file: tokio::fs::File, len: u64) -> Self {
+        Self {
+            stream: std::sync::Mutex::new(tokio_util::io::ReaderStream::new(file)),
+            len,
+        }
+    }
+}
+
+impl http_body::Body for FileStreamBody {
+    type Data = bytes::Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        use futures_util::Stream;
+        let mut guard = self.stream.lock().unwrap();
+        match std::pin::Pin::new(&mut *guard).poll_next(cx) {
+            std::task::Poll::Ready(Some(Ok(bytes))) => {
+                std::task::Poll::Ready(Some(Ok(http_body::Frame::data(bytes))))
+            }
+            std::task::Poll::Ready(Some(Err(e))) => std::task::Poll::Ready(Some(Err(e))),
+            std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::SizeHint::with_exact(self.len)
+    }
+}
+
 impl PCloudClientPort for HttpPCloudClient {
     fn upload(
         &self,
@@ -36,12 +75,13 @@ impl PCloudClientPort for HttpPCloudClient {
         token: &str,
         folder: &str,
         filename: &str,
-        data: Vec<u8>,
+        file_path: &std::path::Path,
     ) -> BoxFuture<'_, Result<(), BackupError>> {
         let region = region.clone();
         let token = token.to_string();
         let folder = folder.trim().to_string();
         let filename = filename.to_string();
+        let path = file_path.to_path_buf();
 
         Box::pin(async move {
             if token.is_empty() {
@@ -49,6 +89,15 @@ impl PCloudClientPort for HttpPCloudClient {
                     "pCloud access token is not configured".to_string(),
                 ));
             }
+
+            let file = tokio::fs::File::open(&path)
+                .await
+                .map_err(|e| BackupError::IoError(format!("Failed to open file for upload: {e}")))?;
+            let file_len = file
+                .metadata()
+                .await
+                .map_err(|e| BackupError::IoError(format!("Failed to read file metadata for upload: {e}")))?
+                .len();
 
             let folder_param = normalize_folder_param(&folder);
 
@@ -59,7 +108,10 @@ impl PCloudClientPort for HttpPCloudClient {
                 token
             );
 
-            let part = reqwest::multipart::Part::bytes(data).file_name(filename.clone());
+            let stream_body = FileStreamBody::new(file, file_len);
+            let body = reqwest::Body::wrap(stream_body);
+            let part = reqwest::multipart::Part::stream_with_length(body, file_len)
+                .file_name(filename.clone());
             let form = reqwest::multipart::Form::new().part("file", part);
 
             let res = self
@@ -371,8 +423,9 @@ mod tests {
     #[tokio::test]
     async fn test_empty_token_fails() {
         let client = HttpPCloudClient::new();
+        let dummy_path = std::path::Path::new("Cargo.toml");
         let res = client
-            .upload(&PCloudRegion::EU, "", "0", "test.enc", vec![1, 2, 3])
+            .upload(&PCloudRegion::EU, "", "0", "test.enc", dummy_path)
             .await;
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("access token is not configured"));
