@@ -46,7 +46,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pcloud_client,
         config.vw_container_name.clone(),
         &config.vw_data_path,
-        &config.vw_env_path,
     ));
 
     // Iniciar loop de cronjobs agendados em segundo plano

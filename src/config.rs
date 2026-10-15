@@ -13,7 +13,6 @@ pub struct Config {
     pub app_lang: String,
     pub base_path: String,
     pub vw_data_path: String,
-    pub vw_env_path: String,
     pub backup_config_path: String,
 }
 
@@ -83,11 +82,8 @@ impl Config {
             }
         };
 
-        let vw_data_path_raw = env::var("VW_DATA_PATH").unwrap_or_else(|_| "data".to_string());
+        let vw_data_path_raw = env::var("VW_DATA_PATH").unwrap_or_else(|_| "vw-data".to_string());
         let vw_data_path = clean_env_value(&vw_data_path_raw);
-
-        let vw_env_path_raw = env::var("VW_ENV_PATH").unwrap_or_else(|_| "vaultwarden.env".to_string());
-        let vw_env_path = clean_env_value(&vw_env_path_raw);
 
         let backup_config_path_raw = env::var("BACKUP_CONFIG_PATH").unwrap_or_else(|_| "backup_config.json".to_string());
         let backup_config_path = clean_env_value(&backup_config_path_raw);
@@ -104,7 +100,6 @@ impl Config {
             app_lang,
             base_path,
             vw_data_path,
-            vw_env_path,
             backup_config_path,
         })
     }

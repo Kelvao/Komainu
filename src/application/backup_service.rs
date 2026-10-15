@@ -22,7 +22,6 @@ pub struct BackupService {
     pcloud_client: Arc<dyn PCloudClientPort>,
     vw_container_name: String,
     vw_data_path: PathBuf,
-    vw_env_path: PathBuf,
     is_running: Arc<Mutex<bool>>,
     last_run_minute: Arc<Mutex<Option<i64>>>,
 }
@@ -34,7 +33,6 @@ impl BackupService {
         pcloud_client: Arc<dyn PCloudClientPort>,
         vw_container_name: String,
         vw_data_path: impl AsRef<Path>,
-        vw_env_path: impl AsRef<Path>,
     ) -> Self {
         Self {
             container_port,
@@ -42,7 +40,6 @@ impl BackupService {
             pcloud_client,
             vw_container_name,
             vw_data_path: vw_data_path.as_ref().to_path_buf(),
-            vw_env_path: vw_env_path.as_ref().to_path_buf(),
             is_running: Arc::new(Mutex::new(false)),
             last_run_minute: Arc::new(Mutex::new(None)),
         }
@@ -78,7 +75,8 @@ impl BackupService {
     }
 
     pub fn env_path_exists(&self) -> bool {
-        self.vw_env_path.exists()
+        self.vw_data_path.join("vaultwarden.env").is_file()
+            || self.vw_data_path.join(".env").is_file()
     }
 
     pub async fn execute_backup(&self) -> Result<BackupRecord, BackupError> {
@@ -324,13 +322,17 @@ impl BackupService {
             }
         }
 
-        // 6. vaultwarden.env
-        if self.vw_env_path.is_file() {
-            if let Ok(env_bytes) = fs::read(&self.vw_env_path) {
-                zip.start_file("vaultwarden.env", options)
-                    .map_err(|e| BackupError::ZipError(e.to_string()))?;
-                zip.write_all(&env_bytes)
-                    .map_err(|e| BackupError::ZipError(e.to_string()))?;
+        // 6. vaultwarden.env or .env inside vw_data_path
+        for env_name in &["vaultwarden.env", ".env"] {
+            let env_candidate = self.vw_data_path.join(env_name);
+            if env_candidate.is_file() {
+                if let Ok(env_bytes) = fs::read(&env_candidate) {
+                    zip.start_file(*env_name, options)
+                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
+                    zip.write_all(&env_bytes)
+                        .map_err(|e| BackupError::ZipError(e.to_string()))?;
+                    break;
+                }
             }
         }
 
@@ -533,7 +535,7 @@ mod tests {
     async fn test_full_backup_workflow_and_unpacking() {
         let tmp_root = std::env::temp_dir().join(format!("komainu_bkp_test_{}", Uuid::new_v4()));
         let data_dir = tmp_root.join("data");
-        let env_file = tmp_root.join("vaultwarden.env");
+        let env_file = data_dir.join("vaultwarden.env");
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(data_dir.join("attachments")).unwrap();
         fs::create_dir_all(data_dir.join("sends")).unwrap();
@@ -568,7 +570,6 @@ mod tests {
             pcloud_client.clone(),
             "vaultwarden".to_string(),
             &data_dir,
-            &env_file,
         );
 
         let record = service.execute_backup().await.expect("Backup execution failed");

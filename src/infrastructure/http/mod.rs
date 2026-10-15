@@ -2238,7 +2238,6 @@ mod tests {
             Arc::new(MockPCloudClient),
             "vaultwarden".to_string(),
             "/tmp/test_vw_data",
-            "/tmp/test_vw_env",
         ))
     }
 
