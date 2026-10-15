@@ -48,12 +48,12 @@ pub async fn csrf_protection_middleware(
 
 pub fn create_router(state: AppState) -> Router {
     let auth_limiter = RateLimiter::new(60, std::time::Duration::from_secs(60));
+    let poll_limiter = RateLimiter::new(300, std::time::Duration::from_secs(60));
 
     let auth_routes = Router::new()
         .route("/login_start", get(login_start_handler))
         .route("/login_finish", post(login_finish_handler))
         .route("/qr_start", get(qr_start_handler))
-        .route("/qr_poll", get(qr_poll_handler))
         .route("/qr_mobile_start", get(qr_mobile_start_handler))
         .route("/qr_mobile_finish", post(qr_mobile_finish_handler))
         .route("/register_start", get(register_start_handler))
@@ -61,7 +61,14 @@ pub fn create_router(state: AppState) -> Router {
         .layer(from_fn(move |req, next| {
             let limiter = auth_limiter.clone();
             async move { rate_limit_middleware(limiter, req, next).await }
-        }));
+        }))
+        .route(
+            "/qr_poll",
+            get(qr_poll_handler).layer(from_fn(move |req, next| {
+                let limiter = poll_limiter.clone();
+                async move { rate_limit_middleware(limiter, req, next).await }
+            })),
+        );
 
     Router::new()
         // Rotas públicas
