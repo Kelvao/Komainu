@@ -1479,6 +1479,18 @@ async fn render_backups_fragment(
         }
     }
 
+    let enc_pass_ph = if config.encryption_password.is_empty() {
+        i18n.backups.encryption_password_placeholder.as_str()
+    } else {
+        "••••••••••••"
+    };
+
+    let pcloud_token_ph = if config.pcloud_token.is_empty() {
+        i18n.backups.pcloud_token_placeholder.as_str()
+    } else {
+        "••••••••••••"
+    };
+
     format!(
         r##"<div class="space-y-6">
     {alert_banner}
@@ -1554,7 +1566,7 @@ async fn render_backups_fragment(
                 <div>
                     <label for="enc-pass" class="block text-xs font-mono text-slate-400 mb-1.5">{encryption_password_label}</label>
                     <div class="relative w-full sm:max-w-md">
-                        <input type="password" id="enc-pass" name="encryption_password" value="{enc_pass_val}" placeholder="{enc_pass_ph}" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                        <input type="password" id="enc-pass" name="encryption_password" value="" placeholder="{enc_pass_ph}" autocomplete="new-password" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
                         <button type="button" onclick="const f=document.getElementById('enc-pass');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
                     </div>
                     <p class="text-[11px] text-slate-500 font-sans mt-1">O arquivo .zip contendo banco, attachments, sends, chaves e templates será criptografado antes do envio.</p>
@@ -1586,7 +1598,7 @@ async fn render_backups_fragment(
                 <div>
                     <label class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_token_label}</label>
                     <div class="relative w-full sm:max-w-md">
-                        <input type="password" id="pcloud-tok" name="pcloud_token" value="{pcloud_token_val}" placeholder="{pcloud_token_ph}" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                        <input type="password" id="pcloud-tok" name="pcloud_token" value="" placeholder="{pcloud_token_ph}" autocomplete="off" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
                         <button type="button" onclick="const f=document.getElementById('pcloud-tok');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
                     </div>
                 </div>
@@ -1670,8 +1682,7 @@ async fn render_backups_fragment(
         preset_weekly = i18n.backups.cron_preset_weekly,
         encryption_section = i18n.backups.encryption_section,
         encryption_password_label = i18n.backups.encryption_password_label,
-        enc_pass_val = config.encryption_password,
-        enc_pass_ph = i18n.backups.encryption_password_placeholder,
+        enc_pass_ph = enc_pass_ph,
         pcloud_section = i18n.backups.pcloud_section,
         pcloud_region_label = i18n.backups.pcloud_region_label,
         pcloud_region_eu = i18n.backups.pcloud_region_eu,
@@ -1682,8 +1693,7 @@ async fn render_backups_fragment(
         pcloud_folder_val = config.pcloud_folder,
         pcloud_folder_ph = i18n.backups.pcloud_folder_placeholder,
         pcloud_token_label = i18n.backups.pcloud_token_label,
-        pcloud_token_val = config.pcloud_token,
-        pcloud_token_ph = i18n.backups.pcloud_token_placeholder,
+        pcloud_token_ph = pcloud_token_ph,
         local_paths_section = i18n.backups.local_paths_section,
         data_path_label = i18n.backups.data_path_label,
         data_path_badge = data_path_badge,
@@ -2664,5 +2674,8 @@ mod tests {
         let frag_bytes = to_bytes(res_frag.into_body(), usize::MAX).await.unwrap();
         let frag_body = String::from_utf8(frag_bytes.to_vec()).unwrap();
         assert!(frag_body.contains("Cópias de Segurança (Backups)"));
+        assert!(!frag_body.contains("strong_password"));
+        assert!(!frag_body.contains("test_tok"));
+        assert!(frag_body.contains("••••••••••••"));
     }
 }
