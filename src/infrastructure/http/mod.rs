@@ -214,8 +214,39 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 <head>
     {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 antialiased font-sans selection:bg-rose-600 selection:text-white">
+    <div class="w-full max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <!-- Telemetry & Brand Rail -->
+        <div class="hidden lg:flex lg:col-span-5 flex-col justify-between space-y-8 pr-4">
+            <div class="space-y-3">
+                <div class="flex items-center gap-2 font-mono text-xs text-rose-400">
+                    <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                    <span>KOMAINU // WORKBENCH</span>
+                </div>
+                <h2 class="text-3xl font-display font-bold text-white tracking-tight">Security Gateway</h2>
+                <p class="text-xs text-slate-400 leading-relaxed font-sans">
+                    Painel autônomo e resiliente para orquestração de containers com autenticação criptográfica WebAuthn / Passkeys.
+                </p>
+            </div>
+
+            <div class="space-y-3 pt-6 border-t border-white/[0.06] text-[11px] font-mono text-slate-400">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">PROTOCOL</span>
+                    <span class="text-slate-300">FIDO2 / WEBAUTHN</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">RESIDENT_KEY</span>
+                    <span class="text-rose-400">PREFERRED</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">CROSS_PLATFORM</span>
+                    <span class="text-emerald-400">MOBILE_QR_ACTIVE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Auth Card -->
+        <div class="w-full lg:col-span-7 bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -304,6 +335,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
             <span>FIDO2 / PASSKEY</span>
             <span>SMARTPHONE & KEY SUPPORT</span>
+        </div>
         </div>
     </div>
 
