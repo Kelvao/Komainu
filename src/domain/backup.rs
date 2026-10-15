@@ -247,70 +247,78 @@ pub fn decrypt_file_aes_256_gcm(
     dst_path: &std::path::Path,
     password: &str,
 ) -> Result<u64, BackupError> {
-    use std::fs::File;
-    use std::io::{Read, Write};
-    use openssl::hash::MessageDigest;
-    use openssl::pkcs5::pbkdf2_hmac;
-    use openssl::symm::{Cipher, Crypter, Mode};
+    let result = (|| -> Result<u64, BackupError> {
+        use std::fs::File;
+        use std::io::{Read, Write};
+        use openssl::hash::MessageDigest;
+        use openssl::pkcs5::pbkdf2_hmac;
+        use openssl::symm::{Cipher, Crypter, Mode};
 
-    if password.is_empty() {
-        return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
-    }
-
-    let mut in_file = File::open(src_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
-    let mut out_file = File::create(dst_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?;
-
-    let mut header = [0u8; 16 + 12 + 16];
-    in_file.read_exact(&mut header)
-        .map_err(|e| BackupError::EncryptionError(format!("Ciphertext payload too short or invalid header: {e}")))?;
-
-    let salt = &header[..16];
-    let nonce = &header[16..28];
-    let tag = &header[28..44];
-
-    let mut key = [0u8; 32];
-    pbkdf2_hmac(password.as_bytes(), salt, 100_000, MessageDigest::sha256(), &mut key)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-
-    let cipher = Cipher::aes_256_gcm();
-    let mut crypter = Crypter::new(cipher, Mode::Decrypt, &key, Some(nonce))
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-    crypter.set_tag(tag)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-
-    let mut in_buf = [0u8; 64 * 1024];
-    let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
-    let mut total_written = 0u64;
-
-    loop {
-        let n = in_file.read(&mut in_buf)
-            .map_err(|e| BackupError::IoError(format!("Failed reading encrypted stream: {e}")))?;
-        if n == 0 {
-            break;
+        if password.is_empty() {
+            return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
         }
-        let count = crypter.update(&in_buf[..n], &mut out_buf)
-            .map_err(|e| BackupError::EncryptionError(format!("Decryption failed: {e}")))?;
-        if count > 0 {
-            out_file.write_all(&out_buf[..count])
-                .map_err(|e| BackupError::IoError(format!("Failed writing decrypted chunk: {e}")))?;
-            total_written += count as u64;
+
+        let mut in_file = File::open(src_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
+        let mut out_file = File::create(dst_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?;
+
+        let mut header = [0u8; 16 + 12 + 16];
+        in_file.read_exact(&mut header)
+            .map_err(|e| BackupError::EncryptionError(format!("Ciphertext payload too short or invalid header: {e}")))?;
+
+        let salt = &header[..16];
+        let nonce = &header[16..28];
+        let tag = &header[28..44];
+
+        let mut key = [0u8; 32];
+        pbkdf2_hmac(password.as_bytes(), salt, 100_000, MessageDigest::sha256(), &mut key)
+            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+        let cipher = Cipher::aes_256_gcm();
+        let mut crypter = Crypter::new(cipher, Mode::Decrypt, &key, Some(nonce))
+            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+        crypter.set_tag(tag)
+            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+        let mut in_buf = [0u8; 64 * 1024];
+        let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
+        let mut total_written = 0u64;
+
+        loop {
+            let n = in_file.read(&mut in_buf)
+                .map_err(|e| BackupError::IoError(format!("Failed reading encrypted stream: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            let count = crypter.update(&in_buf[..n], &mut out_buf)
+                .map_err(|e| BackupError::EncryptionError(format!("Decryption failed: {e}")))?;
+            if count > 0 {
+                out_file.write_all(&out_buf[..count])
+                    .map_err(|e| BackupError::IoError(format!("Failed writing decrypted chunk: {e}")))?;
+                total_written += count as u64;
+            }
         }
+
+        let final_count = crypter.finalize(&mut out_buf)
+            .map_err(|e| BackupError::EncryptionError(format!("Decryption authentication failed: {e}")))?;
+        if final_count > 0 {
+            out_file.write_all(&out_buf[..final_count])
+                .map_err(|e| BackupError::IoError(format!("Failed writing final decrypted chunk: {e}")))?;
+            total_written += final_count as u64;
+        }
+
+        out_file.flush()
+            .map_err(|e| BackupError::IoError(format!("Failed to flush decrypted file: {e}")))?;
+
+        Ok(total_written)
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(dst_path);
     }
 
-    let final_count = crypter.finalize(&mut out_buf)
-        .map_err(|e| BackupError::EncryptionError(format!("Decryption authentication failed: {e}")))?;
-    if final_count > 0 {
-        out_file.write_all(&out_buf[..final_count])
-            .map_err(|e| BackupError::IoError(format!("Failed writing final decrypted chunk: {e}")))?;
-        total_written += final_count as u64;
-    }
-
-    out_file.flush()
-        .map_err(|e| BackupError::IoError(format!("Failed to flush decrypted file: {e}")))?;
-
-    Ok(total_written)
+    result
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -412,6 +420,12 @@ mod tests {
         decrypt_file_aes_256_gcm(&dst, &decrypted_file, pass).expect("File decryption failed");
         let decrypted_from_file = std::fs::read(&decrypted_file).unwrap();
         assert_eq!(decrypted_from_file, original_data);
+
+        // Verify wrong password fails and immediately cleans up destination file
+        let bad_decrypted_file = dir.join("bad_decrypted.bin");
+        let err = decrypt_file_aes_256_gcm(&dst, &bad_decrypted_file, "wrong-password");
+        assert!(err.is_err());
+        assert!(!bad_decrypted_file.exists(), "Destination file must not remain on disk after decryption failure");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
