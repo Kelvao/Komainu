@@ -113,7 +113,26 @@ pub struct DashboardTranslations {
     pub btn_update: String,
     pub btn_rebuild: String,
     pub confirm_rebuild: String,
+    #[serde(default = "default_nav_home")]
+    pub nav_home: String,
+    #[serde(default = "default_nav_backups")]
+    pub nav_backups: String,
+    #[serde(default = "default_backups_title")]
+    pub backups_title: String,
+    #[serde(default = "default_backups_subtitle")]
+    pub backups_subtitle: String,
+    #[serde(default = "default_backups_placeholder_title")]
+    pub backups_placeholder_title: String,
+    #[serde(default = "default_backups_placeholder_desc")]
+    pub backups_placeholder_desc: String,
 }
+
+fn default_nav_home() -> String { "Home".to_string() }
+fn default_nav_backups() -> String { "Backups".to_string() }
+fn default_backups_title() -> String { "Cópias de Segurança (Backups)".to_string() }
+fn default_backups_subtitle() -> String { "Gestão e rotinas de salvaguarda do Vaultwarden".to_string() }
+fn default_backups_placeholder_title() -> String { "Módulo de Backups em Preparação".to_string() }
+fn default_backups_placeholder_desc() -> String { "Em breve você poderá gerar snapshots instantâneos, agendar rotinas automáticas de retenção e restaurar dados diretamente por este painel.".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsTranslations {

@@ -65,7 +65,13 @@
     "btn_restart": "Restart",
     "btn_update": "Update Image",
     "btn_rebuild": "Rebuild",
-    "confirm_rebuild": "Do you want to update the image and recreate the Vaultwarden container while preserving volumes?"
+    "confirm_rebuild": "Do you want to update the image and recreate the Vaultwarden container while preserving volumes?",
+    "nav_home": "Home",
+    "nav_backups": "Backups",
+    "backups_title": "Backups Management",
+    "backups_subtitle": "Backup routines and safeguards for Vaultwarden",
+    "backups_placeholder_title": "Backup Module Coming Soon",
+    "backups_placeholder_desc": "Soon you will be able to create instant snapshots, schedule automatic retention routines, and restore your Vaultwarden database directly from this workbench."
   },
   "metrics": {
     "cpu_title": "CPU Usage",

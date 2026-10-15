@@ -65,7 +65,13 @@
     "btn_restart": "Reiniciar",
     "btn_update": "Atualizar Imagem",
     "btn_rebuild": "Reconstruir",
-    "confirm_rebuild": "Deseja atualizar a imagem e recriar o container Vaultwarden preservando os volumes?"
+    "confirm_rebuild": "Deseja atualizar a imagem e recriar o container Vaultwarden preservando os volumes?",
+    "nav_home": "Home",
+    "nav_backups": "Backups",
+    "backups_title": "Cópias de Segurança (Backups)",
+    "backups_subtitle": "Gestão e rotinas de salvaguarda do Vaultwarden",
+    "backups_placeholder_title": "Módulo de Backups em Preparação",
+    "backups_placeholder_desc": "Em breve você poderá gerar snapshots instantâneos, agendar rotinas automáticas de retenção e restaurar o banco de dados do Vaultwarden diretamente por este painel."
   },
   "metrics": {
     "cpu_title": "Uso de CPU",

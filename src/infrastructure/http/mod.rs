@@ -71,6 +71,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/auth/register_finish", post(register_finish_handler))
         // Rotas protegidas por sessão
         .route("/", get(dashboard_page))
+        .route("/backups", get(backups_page))
         .route("/api/dashboard-fragment", get(dashboard_fragment_handler))
         .route("/api/container/start", post(container_start_handler))
         .route("/api/container/stop", post(container_stop_handler))
@@ -928,7 +929,7 @@ async fn register_page(
             </div>
             <div>
                 <span class="font-display font-bold text-base text-white tracking-tight leading-none block">Komainu</span>
-                <span class="text-[10px] text-emerald-400 font-mono">Setup de Acesso</span>
+                <span class="text-[10px] text-rose-400 font-mono">Setup de Acesso</span>
             </div>
         </div>
 
@@ -946,7 +947,7 @@ async fn register_page(
         <button 
             id="reg-btn"
             onclick="startRegistration('{token}')"
-            class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
+            class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
             <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             <span>{btn_text}</span>
         </button>
@@ -1074,6 +1075,118 @@ async fn register_finish_handler(
 // ROTAS DO DASHBOARD (PROTEGIDAS POR SESSÃO)
 // ==========================================
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ActiveNav {
+    Home,
+    Backups,
+}
+
+fn render_navbar(
+    base_path: &str,
+    i18n: &crate::i18n::Translations,
+    active: ActiveNav,
+    current_path: &str,
+) -> String {
+    let (next_lang, lang_btn_label, lang_title) = if i18n.lang == "en" {
+        ("pt-BR", "PT", "Mudar para Português")
+    } else {
+        ("en", "EN", "Switch to English")
+    };
+
+    let home_url = if base_path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("{}/", base_path)
+    };
+
+    let backups_url = if base_path.is_empty() {
+        "/backups".to_string()
+    } else {
+        format!("{}/backups", base_path)
+    };
+
+    let home_classes = if active == ActiveNav::Home {
+        "bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-sm"
+    } else {
+        "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent"
+    };
+
+    let backups_classes = if active == ActiveNav::Backups {
+        "bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-sm"
+    } else {
+        "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent"
+    };
+
+    let lang_redirect = if base_path.is_empty() {
+        current_path.to_string()
+    } else {
+        format!("{}{}", base_path, current_path)
+    };
+
+    format!(
+        r##"<header class="border-b border-rose-500/15 bg-canvas/90 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 sm:gap-6">
+                <a href="{home_url}" class="flex items-center gap-2.5 sm:gap-3 group">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg sm:text-xl text-rose-400 shrink-0 group-hover:border-rose-500/50 transition-colors">
+                        狛
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-sm sm:text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
+                            <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">v0.2</span>
+                        </div>
+                        <p class="hidden sm:block text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
+                    </div>
+                </a>
+
+                <!-- Navigation Tabs -->
+                <nav class="flex items-center gap-1 sm:gap-1.5 p-1 bg-surface-elevated/80 rounded-lg border border-white/[0.06]">
+                    <a href="{home_url}" class="px-2.5 sm:px-3 py-1 rounded-md text-xs font-mono font-medium transition-colors duration-150 {home_classes}">
+                        {nav_home}
+                    </a>
+                    <a href="{backups_url}" class="px-2.5 sm:px-3 py-1 rounded-md text-xs font-mono font-medium transition-colors duration-150 {backups_classes}">
+                        {nav_backups}
+                    </a>
+                </nav>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                <span class="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-rose-500/10 text-rose-300 border border-rose-500/25">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                    <span class="hidden sm:inline">{active_monitoring}</span>
+                </span>
+
+                <a href="{base_path}/set-lang?lang={next_lang}&redirect={lang_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
+                    <span>{lang_btn_label}</span>
+                </a>
+
+                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    <span>{logout}</span>
+                </a>
+            </div>
+        </div>
+    </header>"##,
+        home_url = home_url,
+        backups_url = backups_url,
+        app_title = i18n.common.app_title,
+        app_subtitle = i18n.common.app_subtitle,
+        home_classes = home_classes,
+        backups_classes = backups_classes,
+        nav_home = i18n.dashboard.nav_home,
+        nav_backups = i18n.dashboard.nav_backups,
+        active_monitoring = i18n.common.active_monitoring,
+        base_path = base_path,
+        next_lang = next_lang,
+        lang_redirect = lang_redirect,
+        lang_btn_label = lang_btn_label,
+        lang_title = lang_title,
+        logout = i18n.common.logout,
+    )
+}
+
 async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
         let login_url = format!("{}/login", state.base_path);
@@ -1082,12 +1195,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 
     let i18n_arc = resolve_i18n(&jar, &state);
     let i18n = &*i18n_arc;
-    let (next_lang, lang_btn_label, lang_title) = if i18n.lang == "en" {
-        ("pt-BR", "PT", "Mudar para Português")
-    } else {
-        ("en", "EN", "Switch to English")
-    };
-
+    let navbar = render_navbar(&state.base_path, i18n, ActiveNav::Home, "/");
     let fragment = render_dashboard_fragment(&state, i18n, None).await;
     let head_tags = theme::render_head(
         &i18n.dashboard.page_title,
@@ -1100,38 +1208,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
-    <header class="border-b border-rose-500/15 bg-canvas/90 backdrop-blur-md sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2.5 sm:gap-3">
-                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg sm:text-xl text-rose-400 shrink-0">
-                    狛
-                </div>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h1 class="text-sm sm:text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
-                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">v0.2</span>
-                    </div>
-                    <p class="hidden sm:block text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-                <span class="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span class="hidden sm:inline">{active_monitoring}</span>
-                </span>
-
-                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
-                    <span>{lang_btn_label}</span>
-                </a>
-
-                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
-                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                    <span>{logout}</span>
-                </a>
-            </div>
-        </div>
-    </header>
+    {navbar}
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
         <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
@@ -1146,17 +1223,74 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 </html>"##,
         lang = i18n.lang,
         head_tags = head_tags,
-        app_title = i18n.common.app_title,
-        app_subtitle = i18n.common.app_subtitle,
-        active_monitoring = i18n.common.active_monitoring,
-        next_lang = next_lang,
-        lang_btn_label = lang_btn_label,
-        lang_title = lang_title,
-        logout = i18n.common.logout,
+        navbar = navbar,
         fragment = fragment,
         footer = i18n.common.footer,
         base_path = state.base_path,
     );
+    Html(html).into_response()
+}
+
+async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    if !is_authenticated(&jar) {
+        let login_url = format!("{}/login", state.base_path);
+        return Redirect::to(&login_url).into_response();
+    }
+
+    let i18n_arc = resolve_i18n(&jar, &state);
+    let i18n = &*i18n_arc;
+    let navbar = render_navbar(&state.base_path, i18n, ActiveNav::Backups, "/backups");
+    let head_tags = theme::render_head(&format!("{} - Komainu", i18n.dashboard.nav_backups), "");
+
+    let html = format!(
+        r##"<!DOCTYPE html>
+<html lang="{lang}" class="dark">
+<head>
+    {head_tags}
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
+    {navbar}
+
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
+        <div class="space-y-6">
+            <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
+                <div class="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
+                    <div class="w-10 h-10 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-lg shrink-0">
+                        <svg class="w-5 h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-display font-bold tracking-tight text-white">{backups_title}</h2>
+                        <p class="text-xs text-slate-400 font-mono mt-0.5">{backups_subtitle}</p>
+                    </div>
+                </div>
+
+                <div class="mt-8 mb-8 text-center max-w-md mx-auto py-8 px-4 rounded-xl bg-canvas border border-white/[0.06]">
+                    <div class="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-2xl mx-auto mb-4">
+                        🛡️
+                    </div>
+                    <h3 class="text-base font-display font-semibold text-white mb-2">{placeholder_title}</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed font-sans">{placeholder_desc}</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="border-t border-rose-500/10 py-4 text-center text-xs font-mono text-slate-500">
+        {footer}
+    </footer>
+</body>
+</html>"##,
+        lang = i18n.lang,
+        head_tags = head_tags,
+        navbar = navbar,
+        backups_title = i18n.dashboard.backups_title,
+        backups_subtitle = i18n.dashboard.backups_subtitle,
+        placeholder_title = i18n.dashboard.backups_placeholder_title,
+        placeholder_desc = i18n.dashboard.backups_placeholder_desc,
+        footer = i18n.common.footer,
+    );
+
     Html(html).into_response()
 }
 
@@ -1345,7 +1479,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
                     <span>{btn_start}</span>
                 </button>
@@ -1354,7 +1488,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-950/80 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-rose-300 hover:text-white border border-rose-500/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
                     <span>{btn_stop}</span>
                 </button>
@@ -1362,7 +1496,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <span>{btn_restart}</span>
                 </button>
@@ -1370,7 +1504,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     <span>{btn_update}</span>
                 </button>
@@ -1379,7 +1513,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     <span>{btn_rebuild}</span>
                 </button>
@@ -1398,10 +1532,10 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div class="flex flex-col justify-between">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{container_cpu_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-cyan-400 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {container_cpu_bar_pct:.1}%"></div>
+                        <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {container_cpu_bar_pct:.1}%"></div>
                     </div>
                 </div>
 
@@ -1409,7 +1543,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div class="flex flex-col justify-between">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{container_ram_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {container_ram_bar_pct:.1}%"></div>
@@ -1433,7 +1567,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{cpu_usage:.1}%</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {cpu_usage:.1}%"></div>
@@ -1450,15 +1584,15 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{ram_used} / {ram_total} MB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-purple-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {ram_pct:.1}%"></div>
+                        <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-purple-400 font-semibold tabular-nums">{ram_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-rose-400 font-semibold tabular-nums">{ram_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
 
@@ -1467,15 +1601,15 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{disk_used} / {disk_total} GB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-emerald-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {disk_pct:.1}%"></div>
+                        <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-emerald-400 font-semibold tabular-nums">{disk_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-rose-400 font-semibold tabular-nums">{disk_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
         </div>
@@ -1968,5 +2102,65 @@ mod tests {
         // Must reject evil.com and use configured rp_origin
         assert!(!qr_url.contains("evil.com"));
         assert!(qr_url.starts_with("http://localhost:3000/qr-login?token="));
+    }
+
+    #[tokio::test]
+    async fn test_backups_page_and_navbar() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key: cookie_key.clone(),
+            i18n: i18n.clone(),
+            base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
+        };
+
+        let router = create_router(state);
+
+        // 1. Unauthenticated -> 303/307 Redirect to /login
+        let req_unauth = Request::builder()
+            .uri("/backups")
+            .body(Body::empty())
+            .unwrap();
+        let res_unauth = router.clone().oneshot(req_unauth).await.unwrap();
+        assert_eq!(res_unauth.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res_unauth.headers().get("location").unwrap().to_str().unwrap(), "/login");
+
+        // 2. Authenticated -> 200 OK with navbar containing Home and Backups
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let jar = SignedCookieJar::new(cookie_key);
+        let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}"));
+        cookie.set_path("/");
+        let jar = jar.add(cookie);
+        let cookie_res = (jar, StatusCode::OK).into_response();
+        let set_cookie = cookie_res.headers().get("set-cookie").unwrap().to_str().unwrap();
+        let cookie_str = set_cookie.split(';').next().unwrap();
+
+        let req_auth = Request::builder()
+            .uri("/backups")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_auth = router.oneshot(req_auth).await.unwrap();
+        assert_eq!(res_auth.status(), StatusCode::OK);
+        let bytes = to_bytes(res_auth.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("Home"));
+        assert!(body.contains("Backups"));
+        assert!(body.contains("Cópias de Segurança (Backups)"));
+        assert!(body.contains("Módulo de Backups em Preparação"));
     }
 }
