@@ -45,11 +45,10 @@ impl CredentialStorePort for FileCredentialStore {
             let json = serde_json::to_string_pretty(&keys)
                 .map_err(|e| AuthError::StoreError(format!("Falha ao serializar credencial: {e}")))?;
 
-            if let Some(parent) = self.path.parent() {
-                if !parent.as_os_str().is_empty() {
+            if let Some(parent) = self.path.parent()
+                && !parent.as_os_str().is_empty() {
                     let _ = fs::create_dir_all(parent).await;
                 }
-            }
 
             let tmp_path = format!("{}.tmp", self.path.display());
 

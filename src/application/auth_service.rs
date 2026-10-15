@@ -206,38 +206,35 @@ impl AuthService {
 
     pub async fn mark_qr_scanned(&self, qr_id: Uuid) -> bool {
         let mut states = self.qr_states.lock().await;
-        if let Some(state) = states.get_mut(&qr_id) {
-            if Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
+        if let Some(state) = states.get_mut(&qr_id)
+            && Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
                 if state.status == QrAuthStatus::Pending {
                     state.status = QrAuthStatus::Scanned;
                 }
                 return true;
             }
-        }
         false
     }
 
     pub async fn approve_qr_session(&self, qr_id: Uuid, admin_ts: u64) -> bool {
         let mut states = self.qr_states.lock().await;
-        if let Some(state) = states.get_mut(&qr_id) {
-            if Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
+        if let Some(state) = states.get_mut(&qr_id)
+            && Instant::now().duration_since(state.created_at).as_secs() < STATE_TTL_SECS {
                 state.status = QrAuthStatus::Approved;
                 state.session_admin_ts = Some(admin_ts);
                 return true;
             }
-        }
         false
     }
 
     pub async fn consume_approved_qr_session(&self, qr_id: Uuid) -> Option<u64> {
         let mut states = self.qr_states.lock().await;
-        if let Some(state) = states.get(&qr_id) {
-            if state.status == QrAuthStatus::Approved {
+        if let Some(state) = states.get(&qr_id)
+            && state.status == QrAuthStatus::Approved {
                 let ts = state.session_admin_ts;
                 states.remove(&qr_id);
                 return ts;
             }
-        }
         None
     }
 }

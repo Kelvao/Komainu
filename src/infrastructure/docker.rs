@@ -128,11 +128,10 @@ impl ContainerPort for DockerAdapter {
                         };
                         // Evita vazamento de memória em execuções prolongadas com containers dinâmicos
                         prev_map.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < 600);
-                        if prev_map.len() >= 20 {
-                            if let Some(oldest) = prev_map.iter().min_by_key(|(_, (_, _, t))| *t).map(|(k, _)| k.clone()) {
+                        if prev_map.len() >= 20
+                            && let Some(oldest) = prev_map.iter().min_by_key(|(_, (_, _, t))| *t).map(|(k, _)| k.clone()) {
                                 prev_map.remove(&oldest);
                             }
-                        }
                         prev_map.insert(name.clone(), (cur_cpu, cur_sys, now));
                         deltas
                     };
@@ -338,13 +337,12 @@ impl ContainerPort for DockerAdapter {
                 .await
                 .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
 
-            if let Some(exit_code) = inspect.exit_code {
-                if exit_code != 0 {
+            if let Some(exit_code) = inspect.exit_code
+                && exit_code != 0 {
                     return Err(ContainerError::ExecFailed(format!(
                         "Command exited with code {exit_code}: {output}"
                     )));
                 }
-            }
 
             Ok(output)
         })

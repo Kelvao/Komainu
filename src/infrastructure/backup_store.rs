@@ -112,7 +112,7 @@ mod tests {
 
         // Initial load should give default
         let initial_cfg = store.load_config().await.unwrap();
-        assert_eq!(initial_cfg.enabled, false);
+        assert!(!initial_cfg.enabled);
         assert_eq!(initial_cfg.cron_expression, "0 3 * * *");
 
         // Save new config

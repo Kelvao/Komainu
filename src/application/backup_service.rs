@@ -270,8 +270,8 @@ impl BackupService {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                if file_name.starts_with("db_") && file_name.ends_with(".sqlite3") {
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+                && file_name.starts_with("db_") && file_name.ends_with(".sqlite3") {
                     let metadata = entry.metadata().ok();
                     let mtime = metadata
                         .and_then(|m| m.modified().ok())
@@ -287,7 +287,6 @@ impl BackupService {
                         _ => {}
                     }
                 }
-            }
         }
 
         newest_file
@@ -335,29 +334,24 @@ impl BackupService {
         if let Ok(entries) = fs::read_dir(&self.vw_data_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with("rsa_key") && path.is_file() {
-                        if let Ok(mut key_file) = fs::File::open(&path) {
-                            if zip.start_file(name, options).is_ok() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && name.starts_with("rsa_key") && path.is_file()
+                        && let Ok(mut key_file) = fs::File::open(&path)
+                            && zip.start_file(name, options).is_ok() {
                                 let _ = std::io::copy(&mut key_file, &mut zip);
                             }
-                        }
-                    }
-                }
             }
         }
 
         // 6. vaultwarden.env or .env inside vw_data_path
         for env_name in &["vaultwarden.env", ".env"] {
             let env_candidate = self.vw_data_path.join(env_name);
-            if env_candidate.is_file() {
-                if let Ok(mut env_file) = fs::File::open(&env_candidate) {
-                    if zip.start_file(*env_name, options).is_ok() {
+            if env_candidate.is_file()
+                && let Ok(mut env_file) = fs::File::open(&env_candidate)
+                    && zip.start_file(*env_name, options).is_ok() {
                         let _ = std::io::copy(&mut env_file, &mut zip);
                         break;
                     }
-                }
-            }
         }
 
         zip.finish()
@@ -391,13 +385,11 @@ impl BackupService {
 
             if path.is_dir() {
                 self.add_directory_to_zip(zip, &path, &zip_path, options)?;
-            } else if path.is_file() {
-                if let Ok(mut file) = fs::File::open(&path) {
-                    if zip.start_file(zip_path, options).is_ok() {
+            } else if path.is_file()
+                && let Ok(mut file) = fs::File::open(&path)
+                    && zip.start_file(zip_path, options).is_ok() {
                         let _ = std::io::copy(&mut file, zip);
                     }
-                }
-            }
         }
 
         Ok(())

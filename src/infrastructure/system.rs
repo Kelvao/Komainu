@@ -54,11 +54,10 @@ fn read_mem_mb() -> (u64, u64) {
             if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
                 total_kb = num;
             }
-        } else if let Some(val) = line.strip_prefix("MemAvailable:") {
-            if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+        } else if let Some(val) = line.strip_prefix("MemAvailable:")
+            && let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
                 avail_kb = num;
             }
-        }
     }
     let total_mb = total_kb / 1024;
     let used_mb = total_kb.saturating_sub(avail_kb) / 1024;
