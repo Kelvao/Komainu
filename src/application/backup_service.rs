@@ -8,6 +8,7 @@ use std::fs;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -16,13 +17,21 @@ use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
+struct BackupRunningGuard(Arc<AtomicBool>);
+
+impl Drop for BackupRunningGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 pub struct BackupService {
     container_port: Arc<dyn ContainerPort>,
     config_store: Arc<dyn BackupConfigStorePort>,
     pcloud_client: Arc<dyn PCloudClientPort>,
     vw_container_name: String,
     vw_data_path: PathBuf,
-    is_running: Arc<Mutex<bool>>,
+    is_running: Arc<AtomicBool>,
     last_run_minute: Arc<Mutex<Option<i64>>>,
 }
 
@@ -40,7 +49,7 @@ impl BackupService {
             pcloud_client,
             vw_container_name,
             vw_data_path: vw_data_path.as_ref().to_path_buf(),
-            is_running: Arc::new(Mutex::new(false)),
+            is_running: Arc::new(AtomicBool::new(false)),
             last_run_minute: Arc::new(Mutex::new(None)),
         }
     }
@@ -67,7 +76,7 @@ impl BackupService {
     }
 
     pub async fn is_in_progress(&self) -> bool {
-        *self.is_running.lock().await
+        self.is_running.load(Ordering::SeqCst)
     }
 
     pub fn data_path_exists(&self) -> bool {
@@ -80,23 +89,18 @@ impl BackupService {
     }
 
     pub async fn execute_backup(&self) -> Result<BackupRecord, BackupError> {
-        let mut running_guard = self.is_running.lock().await;
-        if *running_guard {
+        if self
+            .is_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             return Err(BackupError::ConfigError(
                 "A backup operation is already running".to_string(),
             ));
         }
-        *running_guard = true;
-        // Drop lock guard during execution, but use an RAII guard to reset is_running upon return
-        drop(running_guard);
+        let _guard = BackupRunningGuard(self.is_running.clone());
 
-        let flag_clone = self.is_running.clone();
-        let result = self.run_backup_internal().await;
-
-        let mut flag = flag_clone.lock().await;
-        *flag = false;
-
-        result
+        self.run_backup_internal().await
     }
 
     async fn run_backup_internal(&self) -> Result<BackupRecord, BackupError> {
