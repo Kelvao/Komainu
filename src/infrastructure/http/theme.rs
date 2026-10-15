@@ -3,7 +3,7 @@
 // Paleta: Crimson Dark (Obsidiana com subtons Carmesim / Ruby)
 // Semântica de Ações: Cores distintas e preservadas para Iniciar, Parar, Reiniciar, Atualizar e Reconstruir
 
-pub const KOMAINU_THEME_CSS: &str = r##"
+pub const KOMAINU_THEME_CSS: &str = r##"/* Hallmark · macrostructure: Workbench · genre: atmospheric · theme: Crimson Dark · anchor hue: ruby-rose */
 :root {
   --bg-canvas: #090507;
   --bg-surface: #12090d;
@@ -101,3 +101,4 @@ pub fn render_head(page_title: &str, extra_head: &str) -> String {
         extra_head = extra_head
     )
 }
+
