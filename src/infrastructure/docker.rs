@@ -7,10 +7,13 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+type StatusCache = Mutex<HashMap<String, (std::time::Instant, ContainerStatus)>>;
+
 pub struct DockerAdapter {
     socket_path: String,
     docker: Option<Docker>,
     prev_cpu: Mutex<HashMap<String, (u64, u64, std::time::Instant)>>,
+    status_cache: StatusCache,
 }
 
 impl DockerAdapter {
@@ -20,6 +23,13 @@ impl DockerAdapter {
             socket_path: socket_path.to_string(),
             docker,
             prev_cpu: Mutex::new(HashMap::new()),
+            status_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn invalidate_status(&self, name: &str) {
+        if let Ok(mut cache) = self.status_cache.lock() {
+            cache.remove(name);
         }
     }
 
@@ -52,6 +62,14 @@ impl ContainerPort for DockerAdapter {
     fn get_status(&self, name: &str) -> BoxFuture<'_, Result<ContainerStatus, ContainerError>> {
         let name = name.to_string();
         Box::pin(async move {
+            {
+                let cache = self.status_cache.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some((instant, status)) = cache.get(&name)
+                    && instant.elapsed() < std::time::Duration::from_secs(2) {
+                        return Ok(status.clone());
+                    }
+            }
+
             let docker = self.get_docker()?;
             let inspect = match docker.inspect_container(&name, None).await {
                 Ok(res) => res,
@@ -152,19 +170,27 @@ impl ContainerPort for DockerAdapter {
                 (None, None, None)
             };
 
-            Ok(ContainerStatus {
-                name,
+            let status = ContainerStatus {
+                name: name.clone(),
                 state,
                 image,
                 uptime: started_at,
                 cpu_usage_pct,
                 memory_used_mb,
                 memory_limit_mb,
-            })
+            };
+
+            {
+                let mut cache = self.status_cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.insert(name, (std::time::Instant::now(), status.clone()));
+            }
+
+            Ok(status)
         })
     }
 
     fn start(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
+        self.invalidate_status(name);
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
@@ -176,6 +202,7 @@ impl ContainerPort for DockerAdapter {
     }
 
     fn stop(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
+        self.invalidate_status(name);
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
@@ -187,6 +214,7 @@ impl ContainerPort for DockerAdapter {
     }
 
     fn restart(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
+        self.invalidate_status(name);
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
@@ -198,6 +226,7 @@ impl ContainerPort for DockerAdapter {
     }
 
     fn update_image(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
+        self.invalidate_status(name);
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
@@ -216,6 +245,7 @@ impl ContainerPort for DockerAdapter {
     }
 
     fn rebuild(&self, name: &str) -> BoxFuture<'_, Result<(), ContainerError>> {
+        self.invalidate_status(name);
         let name = name.to_string();
         Box::pin(async move {
             let docker = self.get_docker()?;
