@@ -215,7 +215,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -661,7 +661,7 @@ async fn qr_login_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
+    <div class="max-w-md w-full bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden text-center">
         <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mx-auto mb-4">
             ⚠️
         </div>
@@ -693,7 +693,7 @@ async fn qr_login_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -915,7 +915,7 @@ async fn register_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -1329,7 +1329,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     {error_banner}
 
     <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
-    <div class="bg-surface/95 border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.06]">
