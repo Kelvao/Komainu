@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 struct BackupStoreData {
     pub config: BackupConfig,
     pub history: Vec<BackupRecord>,
@@ -12,14 +12,14 @@ struct BackupStoreData {
 
 pub struct FileBackupStore {
     path: PathBuf,
-    lock: Mutex<()>,
+    cache: Mutex<Option<BackupStoreData>>,
 }
 
 impl FileBackupStore {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
-            lock: Mutex::new(()),
+            cache: Mutex::new(None),
         }
     }
 
@@ -61,40 +61,56 @@ impl FileBackupStore {
 impl BackupConfigStorePort for FileBackupStore {
     fn load_config(&self) -> BoxFuture<'_, Result<BackupConfig, BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-            let data = self.read_data()?;
-            Ok(data.config)
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            if cache.is_none() {
+                *cache = Some(self.read_data()?);
+            }
+            Ok(cache.as_ref().unwrap().config.clone())
         })
     }
 
     fn save_config(&self, config: &BackupConfig) -> BoxFuture<'_, Result<(), BackupError>> {
         let config = config.clone();
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-            let mut data = self.read_data()?;
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            let mut data = if let Some(ref d) = *cache {
+                d.clone()
+            } else {
+                self.read_data()?
+            };
             data.config = config;
-            self.write_data(&data)
+            self.write_data(&data)?;
+            *cache = Some(data);
+            Ok(())
         })
     }
 
     fn load_history(&self) -> BoxFuture<'_, Result<Vec<BackupRecord>, BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-            let data = self.read_data()?;
-            Ok(data.history)
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            if cache.is_none() {
+                *cache = Some(self.read_data()?);
+            }
+            Ok(cache.as_ref().unwrap().history.clone())
         })
     }
 
     fn add_record(&self, record: BackupRecord) -> BoxFuture<'_, Result<(), BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-            let mut data = self.read_data()?;
+            let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            let mut data = if let Some(ref d) = *cache {
+                d.clone()
+            } else {
+                self.read_data()?
+            };
             data.history.insert(0, record);
             // Retain last 50 backup records
             if data.history.len() > 50 {
                 data.history.truncate(50);
             }
-            self.write_data(&data)
+            self.write_data(&data)?;
+            *cache = Some(data);
+            Ok(())
         })
     }
 }
