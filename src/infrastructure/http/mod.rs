@@ -1481,16 +1481,16 @@ async fn pcloud_oauth_callback_handler(
 
     let hostname = if let Some(h) = query.hostname.filter(|h| !h.is_empty()) {
         h
-    } else if query.locationid == Some(2) {
-        "eapi.pcloud.com".to_string()
-    } else {
+    } else if query.locationid == Some(1) {
         "api.pcloud.com".to_string()
+    } else {
+        "eapi.pcloud.com".to_string()
     };
 
-    let region = if hostname.contains("eapi") || query.locationid == Some(2) {
-        crate::domain::backup::PCloudRegion::EU
-    } else {
+    let region = if hostname.contains("api.pcloud.com") && !hostname.contains("eapi") && query.locationid != Some(2) {
         crate::domain::backup::PCloudRegion::US
+    } else {
+        crate::domain::backup::PCloudRegion::EU
     };
 
     let token_endpoint = format!("https://{hostname}/oauth2_token");
