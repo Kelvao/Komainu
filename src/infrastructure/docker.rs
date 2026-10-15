@@ -161,8 +161,10 @@ impl ContainerPort for DockerAdapter {
                     } else {
                         0.0
                     };
+                    let max_cpu = (online_cpus.max(1) as f32) * 100.0;
+                    let clamped_cpu = cpu_pct.clamp(0.0, max_cpu);
 
-                    (Some((cpu_pct * 10.0).round() / 10.0), mem_mb, limit_mb)
+                    (Some((clamped_cpu * 10.0).round() / 10.0), mem_mb, limit_mb)
                 } else {
                     (None, None, None)
                 }
