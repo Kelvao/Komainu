@@ -61,7 +61,7 @@ impl FileBackupStore {
 impl BackupConfigStorePort for FileBackupStore {
     fn load_config(&self) -> BoxFuture<'_, Result<BackupConfig, BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap();
+            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
             let data = self.read_data()?;
             Ok(data.config)
         })
@@ -70,7 +70,7 @@ impl BackupConfigStorePort for FileBackupStore {
     fn save_config(&self, config: &BackupConfig) -> BoxFuture<'_, Result<(), BackupError>> {
         let config = config.clone();
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap();
+            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
             let mut data = self.read_data()?;
             data.config = config;
             self.write_data(&data)
@@ -79,7 +79,7 @@ impl BackupConfigStorePort for FileBackupStore {
 
     fn load_history(&self) -> BoxFuture<'_, Result<Vec<BackupRecord>, BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap();
+            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
             let data = self.read_data()?;
             Ok(data.history)
         })
@@ -87,7 +87,7 @@ impl BackupConfigStorePort for FileBackupStore {
 
     fn add_record(&self, record: BackupRecord) -> BoxFuture<'_, Result<(), BackupError>> {
         Box::pin(async move {
-            let _guard = self.lock.lock().unwrap();
+            let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
             let mut data = self.read_data()?;
             data.history.insert(0, record);
             // Retain last 50 backup records
