@@ -51,3 +51,4 @@ pub async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State
     let err = state.container_port.rebuild(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
+

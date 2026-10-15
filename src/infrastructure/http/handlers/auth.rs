@@ -354,3 +354,4 @@ pub async fn register_finish_handler(
         Err(e) => (StatusCode::BAD_REQUEST, e.to_localized(&state.i18n)).into_response(),
     }
 }
+

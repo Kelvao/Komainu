@@ -370,3 +370,4 @@ pub async fn render_dashboard_fragment(
         swap_alert = swap_alert,
     )
 }
+

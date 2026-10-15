@@ -569,3 +569,4 @@ pub fn render_register_page(i18n: &crate::i18n::Translations, token: &str) -> St
         default_error = i18n.register.default_error,
     )
 }
+

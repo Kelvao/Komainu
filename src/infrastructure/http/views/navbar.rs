@@ -94,3 +94,4 @@ pub fn render_navbar(
         logout = i18n.common.logout,
     )
 }
+

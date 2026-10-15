@@ -28,3 +28,4 @@ pub async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): Stat
     }
     Html(render_dashboard_fragment(&state, &i18n, None).await).into_response()
 }
+

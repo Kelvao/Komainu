@@ -60,3 +60,4 @@ pub async fn theme_css_asset_handler() -> impl IntoResponse {
         theme::KOMAINU_THEME_CSS,
     )
 }
+

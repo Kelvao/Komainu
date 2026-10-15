@@ -43,3 +43,4 @@ pub fn resolve_i18n(jar: &SignedCookieJar, state: &AppState) -> Arc<crate::i18n:
     }
     state.i18n.clone()
 }
+

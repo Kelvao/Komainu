@@ -41,3 +41,4 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/rebuild", post(container_rebuild_handler))
         .with_state(state)
 }
+
