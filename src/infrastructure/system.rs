@@ -71,7 +71,11 @@ fn read_disk_space() -> (u64, u64) {
         let mut stat: libc::statvfs = std::mem::zeroed();
         let path = std::ffi::CString::new("/").unwrap();
         if libc::statvfs(path.as_ptr(), &mut stat) == 0 {
-            let block_size = stat.f_frsize as u64;
+            let block_size = if stat.f_frsize > 0 {
+                stat.f_frsize as u64
+            } else {
+                stat.f_bsize as u64
+            };
             let total_bytes = stat.f_blocks as u64 * block_size;
             let available_bytes = stat.f_bavail as u64 * block_size;
             let total_gb = total_bytes / (1024 * 1024 * 1024);
