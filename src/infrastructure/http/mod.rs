@@ -215,128 +215,94 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 <head>
     {head_tags}
 </head>
-<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="w-full max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-        <!-- Telemetry & Brand Rail -->
-        <div class="hidden lg:flex lg:col-span-5 flex-col justify-between space-y-8 pr-4">
-            <div class="space-y-3">
-                <div class="flex items-center gap-2 font-mono text-xs text-rose-400">
-                    <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                    <span>KOMAINU // WORKBENCH</span>
-                </div>
-                <h2 class="text-3xl font-display font-bold text-white tracking-tight">Security Gateway</h2>
-                <p class="text-xs text-slate-400 leading-relaxed font-sans">
-                    Painel autônomo e resiliente para orquestração de containers com autenticação criptográfica WebAuthn / Passkeys.
-                </p>
-            </div>
-
-            <div class="space-y-3 pt-6 border-t border-white/[0.06] text-[11px] font-mono text-slate-400">
-                <div class="flex items-center justify-between">
-                    <span class="text-slate-500">PROTOCOL</span>
-                    <span class="text-slate-300">FIDO2 / WEBAUTHN</span>
-                </div>
-                <div class="flex items-center justify-between">
-                    <span class="text-slate-500">RESIDENT_KEY</span>
-                    <span class="text-rose-400">PREFERRED</span>
-                </div>
-                <div class="flex items-center justify-between">
-                    <span class="text-slate-500">CROSS_PLATFORM</span>
-                    <span class="text-emerald-400">MOBILE_QR_ACTIVE</span>
-                </div>
-            </div>
-        </div>
-
+<body class="text-slate-100 min-h-screen flex items-center justify-center p-4 sm:p-6 antialiased font-sans selection:bg-rose-600 selection:text-white">
+    <div class="w-full max-w-md mx-auto my-auto py-6 sm:py-10">
         <!-- Interactive Auth Card -->
-        <div class="w-full lg:col-span-7 bg-surface border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-        <!-- Top accent rule -->
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
+        <div class="w-full bg-surface border border-rose-500/20 rounded-2xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+            <!-- Top accent rule -->
+            <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
-        <!-- Telemetry & Header -->
-        <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
-            <div class="flex items-center gap-2 font-mono text-[11px] text-rose-400">
-                <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                <span>SYS // AUTH_GATEWAY</span>
-            </div>
-            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
-                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
-                <span>{lang_btn_label}</span>
-            </a>
-        </div>
-
-        <div class="flex items-center gap-3.5 mb-6">
-            <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shrink-0">
-                狛
-            </div>
-            <div>
-                <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
-                <p class="text-xs text-slate-400 mt-0.5">{header_subtitle}</p>
-            </div>
-        </div>
-
-        {warning_box}
-
-        <!-- Segmented Tab Switcher -->
-        <div class="grid grid-cols-2 gap-1 p-1 bg-canvas rounded-lg border border-white/[0.08] mb-6">
-            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
-                <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-                <span>{tab_local}</span>
-            </button>
-            <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
-                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
-                <span>{tab_qr}</span>
-            </button>
-        </div>
-
-        <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
-
-        <!-- View 1: Local Passkey -->
-        <div id="view-local" class="space-y-4">
-            <p class="text-sm text-slate-300/90 leading-relaxed font-sans mb-6">
-                {description}
-            </p>
-
-            <button 
-                id="login-btn"
-                onclick="startLogin()"
-                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
-                <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-                <span>{btn_text}</span>
-            </button>
-        </div>
-
-        <!-- View 2: QR Code Mobile Key -->
-        <div id="view-qr" class="hidden flex flex-col items-center text-center space-y-4">
-            <p class="text-xs text-slate-300 font-sans leading-relaxed">
-                {qr_desc}
-            </p>
-
-            <!-- QR Box with scanning brackets -->
-            <div class="relative p-3 bg-white rounded-xl shadow-2xl border border-white/20 inline-block">
-                <div id="qr-container" class="w-[200px] h-[200px] flex items-center justify-center">
-                    <div class="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
+            <!-- Top Header: Brand & Language -->
+            <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg text-rose-400 shrink-0">
+                        狛
+                    </div>
+                    <div>
+                        <span class="font-display font-bold text-base text-white tracking-tight leading-none block">Komainu</span>
+                        <span class="text-[10px] text-slate-400 font-mono">Gateway</span>
+                    </div>
                 </div>
-                <div class="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-rose-500"></div>
-                <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-rose-500"></div>
-                <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-rose-500"></div>
-                <div class="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-rose-500"></div>
+                <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
+                    <span>{lang_btn_label}</span>
+                </a>
             </div>
 
-            <!-- Live Status Bar -->
-            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-canvas border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
-                <span id="qr-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span id="qr-status-text">{qr_waiting}</span>
+            <div class="mb-5">
+                <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
+                <p class="text-xs text-slate-400 mt-1 font-sans">{header_subtitle}</p>
             </div>
 
-            <button type="button" onclick="loadQrSession()" class="text-xs font-mono text-slate-400 hover:text-white transition flex items-center gap-1.5 py-1.5 px-3 rounded bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-rose-500/40">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>{qr_reload}</span>
-            </button>
-        </div>
+            {warning_box}
 
-        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-            <span>FIDO2 / PASSKEY</span>
-            <span>SMARTPHONE & KEY SUPPORT</span>
-        </div>
+            <!-- Segmented Tab Switcher -->
+            <div class="grid grid-cols-2 gap-1 p-1 bg-canvas rounded-lg border border-white/[0.08] mb-6">
+                <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2.5 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
+                    <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                    <span>{tab_local}</span>
+                </button>
+                <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2.5 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                    <span>{tab_qr}</span>
+                </button>
+            </div>
+
+            <div id="error-msg" class="hidden mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono"></div>
+
+            <!-- View 1: Local Passkey -->
+            <div id="view-local" class="space-y-4">
+                <p class="text-sm text-slate-300/90 leading-relaxed font-sans mb-6">
+                    {description}
+                </p>
+
+                <button 
+                    id="login-btn"
+                    onclick="startLogin()"
+                    class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                    <span>{btn_text}</span>
+                </button>
+            </div>
+
+            <!-- View 2: QR Code Mobile Key -->
+            <div id="view-qr" class="hidden flex flex-col items-center text-center space-y-4">
+                <p class="text-xs text-slate-300 font-sans leading-relaxed">
+                    {qr_desc}
+                </p>
+
+                <!-- QR Box with scanning brackets and slim crisp border -->
+                <div class="relative p-1.5 sm:p-2 bg-white rounded-xl shadow-xl inline-block">
+                    <div id="qr-container" class="w-[180px] h-[180px] sm:w-[200px] sm:h-[200px] flex items-center justify-center overflow-hidden">
+                        <div class="w-6 h-6 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <div class="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-rose-500"></div>
+                    <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-rose-500"></div>
+                    <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-rose-500"></div>
+                    <div class="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-rose-500"></div>
+                </div>
+
+                <!-- Live Status Bar -->
+                <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-canvas border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
+                    <span id="qr-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="qr-status-text">{qr_waiting}</span>
+                </div>
+
+                <button type="button" onclick="loadQrSession()" class="text-xs font-mono text-slate-400 hover:text-white transition flex items-center gap-1.5 py-1.5 px-3 rounded bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-rose-500/40">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>{qr_reload}</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -630,6 +596,7 @@ async fn qr_start_handler(
         Ok(code) => code
             .render()
             .min_dimensions(200, 200)
+            .quiet_zone(false)
             .dark_color(qrcode::render::svg::Color("#090d16"))
             .light_color(qrcode::render::svg::Color("#ffffff"))
             .build(),
@@ -747,22 +714,13 @@ async fn qr_login_page(
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
-        <!-- Telemetry & Header -->
-        <div class="flex items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.06]">
-            <div class="flex items-center gap-2 font-mono text-[11px] text-rose-400">
-                <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                <span>SYS // MOBILE_SECURITY_KEY</span>
-            </div>
-            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-slate-400 border border-white/[0.08]">FIDO2</span>
-        </div>
-
         <div id="auth-box">
-            <div class="flex items-center gap-3.5 mb-6">
-                <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shrink-0">
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-10 h-10 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-xl text-rose-400 shrink-0">
                     狛
                 </div>
                 <div>
-                    <h1 class="text-xl font-display font-bold tracking-tight text-white">{mobile_title}</h1>
+                    <h1 class="text-lg sm:text-xl font-display font-bold tracking-tight text-white">{mobile_title}</h1>
                     <p class="text-xs text-slate-400 mt-0.5">{mobile_subtitle}</p>
                 </div>
             </div>
@@ -792,11 +750,6 @@ async fn qr_login_page(
             <div class="py-2 px-3 rounded-lg bg-canvas border border-emerald-500/30 text-[11px] font-mono text-emerald-400 inline-block">
                 SESSÃO DESBLOQUEADA NO COMPUTADOR
             </div>
-        </div>
-
-        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-            <span>FIDO2 / PASSKEY</span>
-            <span>SMARTPHONE KEY</span>
         </div>
     </div>
 
@@ -969,19 +922,19 @@ async fn register_page(
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
-        <div class="flex items-center gap-2 font-mono text-[11px] text-emerald-400 mb-6 pb-4 border-b border-white/[0.06]">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>ENROLLMENT // TOKEN_ACTIVE</span>
-        </div>
-
-        <div class="flex items-center gap-3.5 mb-6">
-            <div class="w-11 h-11 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-2xl text-rose-400 shrink-0">
+        <div class="flex items-center gap-2.5 mb-5 pb-4 border-b border-white/[0.06]">
+            <div class="w-8 h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg text-rose-400 shrink-0">
                 狛
             </div>
             <div>
-                <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
-                <p class="text-xs text-slate-400 mt-0.5">{header_subtitle}</p>
+                <span class="font-display font-bold text-base text-white tracking-tight leading-none block">Komainu</span>
+                <span class="text-[10px] text-emerald-400 font-mono">Setup de Acesso</span>
             </div>
+        </div>
+
+        <div class="mb-5">
+            <h1 class="text-xl font-display font-bold tracking-tight text-white">{header_title}</h1>
+            <p class="text-xs text-slate-400 mt-0.5">{header_subtitle}</p>
         </div>
 
         <p class="text-sm text-slate-300/90 leading-relaxed mb-6 font-sans">
@@ -993,15 +946,10 @@ async fn register_page(
         <button 
             id="reg-btn"
             onclick="startRegistration('{token}')"
-            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
+            class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
             <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             <span>{btn_text}</span>
         </button>
-
-        <div class="mt-6 pt-4 border-t border-white/[0.06] flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-            <span>RESIDENT_KEY // PREFERRED</span>
-            <span>FIDO2 / PASSKEY</span>
-        </div>
     </div>
 
     <script>
@@ -1153,23 +1101,23 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
     <header class="border-b border-rose-500/15 bg-canvas/90 backdrop-blur-md sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-xl text-rose-400">
+        <div class="max-w-6xl mx-auto px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 sm:gap-3">
+                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg sm:text-xl text-rose-400 shrink-0">
                     狛
                 </div>
                 <div>
                     <div class="flex items-center gap-2">
-                        <h1 class="text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
+                        <h1 class="text-sm sm:text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
                         <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">v0.2</span>
                     </div>
-                    <p class="text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
+                    <p class="hidden sm:block text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2 sm:gap-3">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+            <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                <span class="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>{active_monitoring}</span>
+                    <span class="hidden sm:inline">{active_monitoring}</span>
                 </span>
 
                 <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
@@ -1391,13 +1339,13 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <p class="text-xs text-slate-400 mt-1 font-mono">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06]">
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06] w-full sm:w-auto">
                 <button 
                     hx-post="{base_path}/api/container/start" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
                     <span>{btn_start}</span>
                 </button>
@@ -1406,7 +1354,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
                     <span>{btn_stop}</span>
                 </button>
@@ -1414,7 +1362,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <span>{btn_restart}</span>
                 </button>
@@ -1422,7 +1370,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     <span>{btn_update}</span>
                 </button>
@@ -1431,7 +1379,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     <span>{btn_rebuild}</span>
                 </button>
@@ -1479,7 +1427,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             <div class="flex-1 h-px bg-white/[0.04]"></div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <!-- Métrica CPU Host -->
             <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
