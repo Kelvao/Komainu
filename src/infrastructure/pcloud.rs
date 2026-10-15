@@ -332,23 +332,23 @@ impl PCloudClientPort for HttpPCloudClient {
                 )));
             }
 
-            let mut out_file = tokio::fs::File::create(&dest_path)
+            let file = tokio::fs::File::create(&dest_path)
                 .await
                 .map_err(|e| BackupError::IoError(format!("Failed to create destination file: {e}")))?;
+            let mut out_file = tokio::io::BufWriter::with_capacity(128 * 1024, file);
 
+            use tokio::io::AsyncWriteExt;
             while let Some(chunk) = download_res
                 .chunk()
                 .await
                 .map_err(|e| BackupError::IoError(format!("Failed reading download chunk: {e}")))?
             {
-                use tokio::io::AsyncWriteExt;
                 out_file
                     .write_all(&chunk)
                     .await
                     .map_err(|e| BackupError::IoError(format!("Failed writing download chunk: {e}")))?;
             }
 
-            use tokio::io::AsyncWriteExt;
             out_file
                 .flush()
                 .await
