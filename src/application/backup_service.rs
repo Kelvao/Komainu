@@ -332,18 +332,20 @@ impl BackupService {
     fn build_zip_archive(&self, sqlite_path: &Path, out_path: &Path) -> Result<(), BackupError> {
         let file = fs::File::create(out_path)
             .map_err(|e| BackupError::IoError(format!("Failed to create temporary backup zip: {e}")))?;
-        let mut zip = ZipWriter::new(file);
+        let writer = std::io::BufWriter::with_capacity(128 * 1024, file);
+        let mut zip = ZipWriter::new(writer);
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o644);
 
         // 1. db.sqlite3
         if sqlite_path.exists() {
-            let mut db_file = fs::File::open(sqlite_path)
+            let db_file = fs::File::open(sqlite_path)
                 .map_err(|e| BackupError::IoError(format!("Failed to open database file: {e}")))?;
+            let mut db_reader = std::io::BufReader::with_capacity(64 * 1024, db_file);
             zip.start_file("db.sqlite3", options)
                 .map_err(|e| BackupError::ZipError(e.to_string()))?;
-            std::io::copy(&mut db_file, &mut zip)
+            std::io::copy(&mut db_reader, &mut zip)
                 .map_err(|e| BackupError::IoError(format!("Failed to write database to zip: {e}")))?;
         }
 
@@ -389,8 +391,10 @@ impl BackupService {
                     }
         }
 
-        zip.finish()
+        let mut writer = zip.finish()
             .map_err(|e| BackupError::ZipError(e.to_string()))?;
+        writer.flush()
+            .map_err(|e| BackupError::IoError(format!("Failed to flush backup zip buffer: {e}")))?;
         Ok(())
     }
 
@@ -421,10 +425,11 @@ impl BackupService {
             if path.is_dir() {
                 self.add_directory_to_zip(zip, &path, &zip_path, options)?;
             } else if path.is_file()
-                && let Ok(mut file) = fs::File::open(&path)
-                    && zip.start_file(zip_path, options).is_ok() {
-                        let _ = std::io::copy(&mut file, zip);
-                    }
+                && let Ok(file) = fs::File::open(&path)
+                && zip.start_file(zip_path, options).is_ok() {
+                    let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+                    let _ = std::io::copy(&mut reader, zip);
+                }
         }
 
         Ok(())
