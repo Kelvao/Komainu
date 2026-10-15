@@ -2,8 +2,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.85%2B-orange?style=for-the-badge&logo=rust" alt="Rust" />
-  <img src="https://img.shields.io/badge/Binary_Size-1.1_MB-success?style=for-the-badge" alt="Binary Size" />
+  <img src="https://img.shields.io/badge/Binary_Size-~2.5_MB_(compressed)-success?style=for-the-badge" alt="Binary Size" />
   <img src="https://img.shields.io/badge/Auth-WebAuthn_%2F_Passkeys-blue?style=for-the-badge&logo=fido" alt="Passkeys" />
+  <img src="https://img.shields.io/badge/Backups-AES--256--GCM%20%2B%20pCloud-emerald?style=for-the-badge" alt="Encrypted Backups" />
   <img src="https://img.shields.io/badge/Frontend-HTMX_%2B_Tailwind-informational?style=for-the-badge" alt="HTMX" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge" alt="License" />
 </p>
@@ -18,12 +19,14 @@
 Self-hosting Vaultwarden gives you complete control over your passwords and secrets, but managing the underlying container typically means either relying on raw SSH commands or deploying heavyweight container management platforms (like Portainer), which introduce unwanted complexity, memory overhead, and security exposure.
 
 **Komainu** solves this with a hyper-focused, single-binary management suite:
-- **Zero runtime dependencies**: Compiles into a single standalone executable (~1.1 MB with UPX compression).
+- **Zero runtime dependencies**: Compiles into a single standalone executable (~2.5 MB with UPX compression).
 - **Passwordless Security**: Hardware-backed Passkey (WebAuthn/FIDO2) authentication only.
 - **Cross-Device Smartphone Key**: Log in on any PC by scanning a dynamic on-screen QR code with your smartphone camera and verifying biometrics on your phone.
+- **Automated & Encrypted Off-Site Backups**: Non-locking hot backup via `vaultwarden backup`, packaging attachments, sends, env, and RSA keys from `vw-data/`, encrypted with AES-256-GCM, and uploaded to pCloud on a configurable cron schedule.
 - **Zero Public Registration**: No web registration forms. The admin Passkey is registered strictly via CLI over SSH.
 - **Live Dual-Layer Monitoring**: Real-time 2-second telemetry for both the host machine and the isolated container.
-- **Hallmark Utilitarian Interface**: Modern-minimal industrial cockpit design with Space Grotesk, Inter, and JetBrains Mono typography, dense telemetry gauges, and an integrated language switcher (PT/EN).
+- **Dual-Cockpit Navigation**: Seamless navigation between Home (Container Lifecycle & Telemetry) and Backups (Scheduler, On-Demand Execution & History).
+- **Responsive Industrial Interface**: Utilitarian cockpit design with Space Grotesk, Inter, and JetBrains Mono typography, dark aesthetic, responsive mobile layout, and integrated language switcher (PT/EN).
 - **Embedded UI**: Pure Axum + HTMX + Tailwind CSS embedded directly in the Rust binary — zero Node.js, npm, or frontend build toolchains.
 
 ---
@@ -36,6 +39,15 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 - **Enforced Single-Admin Model**: Eliminates privilege escalation and unauthorized multi-user registrations.
 - **Tamper-Proof Sessions**: Signed HTTP-only session cookies derived with SHA-512 and AES-GCM encryption.
 - **Dynamic Language Switcher**: Switch on the fly between English and Portuguese (`EN` / `PT`) via the navigation bar and login screen, persisted across sessions with signed cookies.
+
+### 💾 Automated & Encrypted Off-Site Backups (pCloud)
+- **Zero-Downtime Hot Snapshots**: Executes the native `vaultwarden backup` command inside the container to safely snapshot SQLite without locks, corruption risks, or container restarts.
+- **Complete Secret & Data Packaging**: Bundles the database snapshot alongside `attachments/`, `sends/`, `vaultwarden.env`, `rsa_key*`, and `templates/` directly from the configured `vw-data/` path.
+- **Client-Side AES-256-GCM Encryption**: The bundled `.zip` archive is encrypted client-side with AES-256-GCM using PBKDF2 (600,000 iterations) before any network transmission.
+- **Direct pCloud Cloud Storage Sync**: Direct API streaming to pCloud (supporting EU and US data regions, and custom folder targets).
+- **Configurable Cron Scheduler**: Integrated background cron daemon supporting standard cron syntax with quick presets (Daily at 03:00, Every 12h, Weekly) and live upcoming run calculation.
+- **On-Demand Execution**: Instant tactile "Executar Backup Agora" button with real-time feedback and execution status.
+- **Audit & History Table**: Searchable history tracking execution date, archive filename, size, duration, and status.
 
 ### 🔒 Zero Public Attack Surface Registration
 - Public web registration forms are disabled by default.
@@ -66,21 +78,27 @@ locales/                # Language definition files (JSON)
 src/
 ├── domain/             # Core business models & traits (zero external deps)
 │   ├── auth.rs         # Authentication credentials & passkey types
+│   ├── backup.rs       # Backup configuration, records, regions, and crypto models
 │   ├── container.rs    # Container status, lifecycle states, ports
 │   └── system.rs       # System metrics domain models
 ├── application/        # Application services & business logic orchestrators
 │   ├── auth_service.rs # WebAuthn challenge/registration orchestration & TTL cleanup
+│   ├── backup_service.rs # Hot snapshot, zip packaging, AES-GCM encryption & cloud sync
 │   ├── container_service.rs # Container lifecycle orchestration
 │   └── system_service.rs    # Resource metric aggregation
 ├── infrastructure/     # Concrete adapters & external drivers
 │   ├── auth_store.rs   # JSON-backed single-admin credential store
+│   ├── backup_store.rs # JSON-backed backup configuration and history store
 │   ├── docker.rs       # Docker daemon communication via Bollard & CPU delta cache
-│   ├── http/           # Axum web server, HTMX handlers, HTML templates
+│   ├── http/           # Axum web server, HTMX handlers, theme & HTML templates
+│   │   ├── mod.rs      # Routing, session cookies, API handlers, page renderers
+│   │   └── theme.rs    # Centralized CSS head tags, fonts, and dark palette
+│   ├── pcloud.rs       # pCloud REST API client (EU/US regions, streaming upload)
 │   └── system.rs       # Sysinfo adapter with non-blocking disk inspection
 ├── cli.rs              # Command-line interface definitions (Clap)
 ├── config.rs           # Environment variable validation & security alerts
 ├── i18n.rs             # Internationalization loader & strongly-typed translations
-└── main.rs             # Composition root & dependency injection
+└── main.rs             # Composition root, background cron daemon & dependency injection
 ```
 
 ---
@@ -111,6 +129,8 @@ cp .env.example .env
 | `RP_ORIGIN` | `http://localhost:3000` | WebAuthn Relying Party Origin (e.g., `https://komainu.example.com`). |
 | `CREDENTIALS_PATH` | `credentials.json` | File path where the admin passkey credential is saved. |
 | `APP_LANG` | `en` | Interface & CLI language (`en`, `pt-BR`). |
+| `VW_DATA_PATH` | `vw-data` | Host path to the Vaultwarden data directory (contains database, attachments, keys). |
+| `BACKUP_CONFIG_PATH` | `backup_config.json` | Path where backup settings, cron configuration, and history are stored. |
 
 ### `.env.example`
 
@@ -147,7 +167,7 @@ BACKUP_CONFIG_PATH=backup_config.json # Path to store backup configuration and h
 cargo build --release
 ```
 
-### 3. Ultimate Binary Compression (~1.1 MB)
+### 3. Ultimate Binary Compression (~2.5 MB)
 The `Cargo.toml` is pre-configured with size optimization flags:
 ```toml
 [profile.release]
