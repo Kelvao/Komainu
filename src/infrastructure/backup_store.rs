@@ -1,4 +1,7 @@
-use crate::domain::backup::{BackupConfig, BackupConfigStorePort, BackupError, BackupRecord, BoxFuture};
+use crate::domain::backup::{
+    decrypt_aes_256_gcm, encrypt_aes_256_gcm, BackupConfig, BackupConfigStorePort, BackupError,
+    BackupRecord, BoxFuture,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,13 +15,62 @@ struct BackupStoreData {
 
 pub struct FileBackupStore {
     path: PathBuf,
+    secret: Option<String>,
     cache: Mutex<Option<BackupStoreData>>,
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn decode_hex(s: &str) -> Result<Vec<u8>, BackupError> {
+    if s.len() % 2 != 0 {
+        return Err(BackupError::EncryptionError("Invalid hex string length".to_string()));
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&s[i..i + 2], 16)
+                .map_err(|e| BackupError::EncryptionError(format!("Invalid hex byte: {e}")))
+        })
+        .collect()
+}
+
+fn encrypt_field(val: &str, secret: &str) -> Result<String, BackupError> {
+    if val.is_empty() || secret.is_empty() {
+        return Ok(val.to_string());
+    }
+    if val.starts_with("enc:") {
+        return Ok(val.to_string());
+    }
+    let encrypted = encrypt_aes_256_gcm(val.as_bytes(), secret)?;
+    Ok(format!("enc:{}", encode_hex(&encrypted)))
+}
+
+fn decrypt_field(val: &str, secret: &str) -> Result<String, BackupError> {
+    if val.is_empty() || secret.is_empty() || !val.starts_with("enc:") {
+        return Ok(val.to_string());
+    }
+    let hex_data = &val[4..];
+    let ciphertext = decode_hex(hex_data)?;
+    let decrypted = decrypt_aes_256_gcm(&ciphertext, secret)?;
+    String::from_utf8(decrypted)
+        .map_err(|e| BackupError::EncryptionError(format!("Decrypted secret is not valid UTF-8: {e}")))
 }
 
 impl FileBackupStore {
     pub fn new(path: impl AsRef<Path>) -> Self {
+        let secret = std::env::var("KOMAINU_STORE_KEY")
+            .or_else(|_| std::env::var("SESSION_SECRET"))
+            .ok()
+            .filter(|s| !s.is_empty());
+        Self::with_secret(path, secret)
+    }
+
+    pub fn with_secret(path: impl AsRef<Path>, secret: Option<String>) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
+            secret,
             cache: Mutex::new(None),
         }
     }
@@ -32,12 +84,27 @@ impl FileBackupStore {
         if content.trim().is_empty() {
             return Ok(BackupStoreData::default());
         }
-        serde_json::from_str(&content)
-            .map_err(|e| BackupError::ConfigError(format!("Failed to parse backup store JSON: {e}")))
+        let mut data: BackupStoreData = serde_json::from_str(&content)
+            .map_err(|e| BackupError::ConfigError(format!("Failed to parse backup store JSON: {e}")))?;
+
+        if let Some(ref sec) = self.secret {
+            data.config.encryption_password = decrypt_field(&data.config.encryption_password, sec)?;
+            data.config.pcloud_token = decrypt_field(&data.config.pcloud_token, sec)?;
+            data.config.pcloud_client_secret = decrypt_field(&data.config.pcloud_client_secret, sec)?;
+        }
+
+        Ok(data)
     }
 
     fn write_data(&self, data: &BackupStoreData) -> Result<(), BackupError> {
-        let json = serde_json::to_string_pretty(data)
+        let mut store_data = data.clone();
+        if let Some(ref sec) = self.secret {
+            store_data.config.encryption_password = encrypt_field(&store_data.config.encryption_password, sec)?;
+            store_data.config.pcloud_token = encrypt_field(&store_data.config.pcloud_token, sec)?;
+            store_data.config.pcloud_client_secret = encrypt_field(&store_data.config.pcloud_client_secret, sec)?;
+        }
+
+        let json = serde_json::to_string_pretty(&store_data)
             .map_err(|e| BackupError::ConfigError(format!("Failed to serialize backup store: {e}")))?;
         
         // Write atomically via temporary file
@@ -65,7 +132,18 @@ impl BackupConfigStorePort for FileBackupStore {
             if cache.is_none() {
                 *cache = Some(self.read_data()?);
             }
-            Ok(cache.as_ref().unwrap().config.clone())
+            let mut cfg = cache.as_ref().unwrap().config.clone();
+            if let Ok(pw) = std::env::var("BACKUP_ENCRYPTION_PASSWORD") {
+                if !pw.is_empty() {
+                    cfg.encryption_password = pw;
+                }
+            }
+            if let Ok(tok) = std::env::var("PCLOUD_TOKEN") {
+                if !tok.is_empty() {
+                    cfg.pcloud_token = tok;
+                }
+            }
+            Ok(cfg)
         })
     }
 
@@ -103,11 +181,7 @@ impl BackupConfigStorePort for FileBackupStore {
             } else {
                 self.read_data()?
             };
-            data.history.insert(0, record);
-            // Retain last 50 backup records
-            if data.history.len() > 50 {
-                data.history.truncate(50);
-            }
+            data.history.push(record);
             self.write_data(&data)?;
             *cache = Some(data);
             Ok(())
@@ -124,7 +198,7 @@ mod tests {
     async fn test_file_backup_store_roundtrip() {
         let dir = tempfile_dir("test_file_backup_store");
         let path = dir.join("backup_store.json");
-        let store = FileBackupStore::new(&path);
+        let store = FileBackupStore::with_secret(&path, Some("local_master_secret".to_string()));
 
         // Initial load should give default
         let initial_cfg = store.load_config().await.unwrap();
@@ -144,6 +218,14 @@ mod tests {
         };
         store.save_config(&new_cfg).await.unwrap();
 
+        // Check raw content on disk: sensitive fields must be encrypted
+        let raw_disk = fs::read_to_string(&path).unwrap();
+        assert!(!raw_disk.contains("super-password"), "Plaintext password leaked on disk!");
+        assert!(!raw_disk.contains("tok123"), "Plaintext pCloud token leaked on disk!");
+        assert!(!raw_disk.contains("secret123"), "Plaintext pCloud client secret leaked on disk!");
+        assert!(raw_disk.contains("enc:"), "Encrypted prefix expected on disk");
+
+        // Loading via store decrypts seamlessly
         let loaded = store.load_config().await.unwrap();
         assert_eq!(loaded, new_cfg);
 

@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Configurando adaptador Docker em '{}'...", config.docker_socket);
     let docker_adapter = Arc::new(DockerAdapter::new(&config.docker_socket));
 
-    let backup_store = Arc::new(FileBackupStore::new(&config.backup_config_path));
+    let backup_store = Arc::new(FileBackupStore::with_secret(&config.backup_config_path, Some(config.session_secret.clone())));
     let pcloud_client = Arc::new(HttpPCloudClient::new());
     let backup_service = Arc::new(BackupService::new(
         docker_adapter.clone(),
