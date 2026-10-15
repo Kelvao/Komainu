@@ -139,20 +139,7 @@ async fn set_lang_handler(
 
 fn resolve_i18n(jar: &SignedCookieJar, state: &AppState) -> std::sync::Arc<crate::i18n::Translations> {
     if let Some(cookie) = jar.get(LANG_COOKIE) {
-        let val = cookie.value();
-        if val == "en" {
-            if state.i18n.lang == "en" {
-                return state.i18n.clone();
-            } else {
-                return std::sync::Arc::new(crate::i18n::I18n::load("en"));
-            }
-        } else if val == "pt" || val == "pt-BR" || val == "pt_BR" {
-            if state.i18n.lang == "pt-BR" {
-                return state.i18n.clone();
-            } else {
-                return std::sync::Arc::new(crate::i18n::I18n::load("pt-BR"));
-            }
-        }
+        return crate::i18n::I18n::get(cookie.value());
     }
     state.i18n.clone()
 }

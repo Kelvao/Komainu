@@ -379,11 +379,28 @@ fn default_b_cfg_saved() -> String { "Configurações de backup salvas com suces
 fn default_b_bkp_succ() -> String { "Backup executado e enviado com sucesso ao pCloud!".to_string() }
 fn default_b_already_run() -> String { "Um backup já está em andamento. Aguarde a finalização.".to_string() }
 
+static CACHED_TRANSLATIONS: std::sync::OnceLock<(std::sync::Arc<Translations>, std::sync::Arc<Translations>)> =
+    std::sync::OnceLock::new();
+
 pub struct I18n;
 
 impl I18n {
     const EN_JSON: &'static str = include_str!("../locales/en.json");
     const PT_BR_JSON: &'static str = include_str!("../locales/pt-BR.json");
+
+    pub fn get(lang: &str) -> std::sync::Arc<Translations> {
+        let (en, pt) = CACHED_TRANSLATIONS.get_or_init(|| {
+            (
+                std::sync::Arc::new(Self::load("en")),
+                std::sync::Arc::new(Self::load("pt-BR")),
+            )
+        });
+        let normalized = lang.trim().to_lowercase();
+        match normalized.as_str() {
+            "pt" | "pt-br" | "pt_br" | "pt-pt" => pt.clone(),
+            _ => en.clone(),
+        }
+    }
 
     pub fn load(lang: &str) -> Translations {
         let normalized = lang.trim().to_lowercase();
@@ -436,6 +453,18 @@ mod tests {
     fn test_load_fallback_to_english() {
         let t = I18n::load("fr");
         assert_eq!(t.lang, "en");
+    }
+
+    #[test]
+    fn test_get_cached_translations() {
+        let en1 = I18n::get("en");
+        let en2 = I18n::get("en");
+        assert!(std::sync::Arc::ptr_eq(&en1, &en2));
+
+        let pt1 = I18n::get("pt-BR");
+        let pt2 = I18n::get("pt");
+        assert!(std::sync::Arc::ptr_eq(&pt1, &pt2));
+        assert_eq!(pt1.lang, "pt-BR");
     }
 }
 
