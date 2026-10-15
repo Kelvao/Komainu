@@ -1,18 +1,18 @@
 use crate::domain::system::{BoxFuture, SystemMetrics, SystemMonitorPort};
+use std::fs;
 use std::sync::Mutex;
-use sysinfo::{Disks, System};
+use std::time::Instant;
 
 pub struct SysinfoAdapter {
-    sys: Mutex<System>,
-    disk_cache: Mutex<Option<(std::time::Instant, (u64, u64))>>,
+    cpu_state: Mutex<Option<(u64, u64, Instant)>>,
+    disk_cache: Mutex<Option<(Instant, (u64, u64))>>,
 }
 
 impl SysinfoAdapter {
     pub fn new() -> Self {
-        let mut sys = System::new_all();
-        sys.refresh_all();
+        let initial_cpu = read_cpu_ticks().map(|(w, t)| (w, t, Instant::now()));
         Self {
-            sys: Mutex::new(sys),
+            cpu_state: Mutex::new(initial_cpu),
             disk_cache: Mutex::new(None),
         }
     }
@@ -24,19 +24,90 @@ impl Default for SysinfoAdapter {
     }
 }
 
+fn read_cpu_ticks() -> Option<(u64, u64)> {
+    let content = fs::read_to_string("/proc/stat").ok()?;
+    let first_line = content.lines().next()?;
+    if !first_line.starts_with("cpu ") {
+        return None;
+    }
+    let parts: Vec<u64> = first_line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|s| s.parse::<u64>().ok())
+        .collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    // user, nice, system, idle, iowait, irq, softirq, steal
+    let idle = parts[3] + parts.get(4).copied().unwrap_or(0);
+    let total: u64 = parts.iter().sum();
+    let work = total.saturating_sub(idle);
+    Some((work, total))
+}
+
+fn read_mem_mb() -> (u64, u64) {
+    let content = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let mut total_kb = 0u64;
+    let mut avail_kb = 0u64;
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("MemTotal:") {
+            if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+                total_kb = num;
+            }
+        } else if let Some(val) = line.strip_prefix("MemAvailable:") {
+            if let Some(num) = val.split_whitespace().next().and_then(|s| s.parse::<u64>().ok()) {
+                avail_kb = num;
+            }
+        }
+    }
+    let total_mb = total_kb / 1024;
+    let used_mb = total_kb.saturating_sub(avail_kb) / 1024;
+    (total_mb, used_mb)
+}
+
+fn read_disk_space() -> (u64, u64) {
+    #[cfg(unix)]
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        let path = std::ffi::CString::new("/").unwrap();
+        if libc::statvfs(path.as_ptr(), &mut stat) == 0 {
+            let block_size = stat.f_frsize as u64;
+            let total_bytes = stat.f_blocks as u64 * block_size;
+            let available_bytes = stat.f_bavail as u64 * block_size;
+            let total_gb = total_bytes / (1024 * 1024 * 1024);
+            let used_gb = total_bytes.saturating_sub(available_bytes) / (1024 * 1024 * 1024);
+            return (used_gb, total_gb);
+        }
+    }
+    (0, 0)
+}
+
 impl SystemMonitorPort for SysinfoAdapter {
     fn get_metrics(&self) -> BoxFuture<'_, SystemMetrics> {
         Box::pin(async move {
-            let (cpu_usage_pct, ram_total_mb, ram_used_mb) = {
-                let mut sys = self.sys.lock().unwrap_or_else(|e| e.into_inner());
-                sys.refresh_cpu_all();
-                sys.refresh_memory();
-                (
-                    sys.global_cpu_usage(),
-                    sys.total_memory() / (1024 * 1024),
-                    sys.used_memory() / (1024 * 1024),
-                )
+            let cpu_usage_pct = {
+                let mut state = self.cpu_state.lock().unwrap_or_else(|e| e.into_inner());
+                let now = Instant::now();
+                if let Some((work, total)) = read_cpu_ticks() {
+                    let pct = if let Some(&(prev_work, prev_total, _)) = state.as_ref() {
+                        let work_delta = work.saturating_sub(prev_work);
+                        let total_delta = total.saturating_sub(prev_total);
+                        if total_delta > 0 {
+                            ((work_delta as f32 / total_delta as f32) * 100.0).clamp(0.0, 100.0)
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    };
+                    *state = Some((work, total, now));
+                    pct
+                } else {
+                    0.0
+                }
             };
+
+            let (ram_total_mb, ram_used_mb) = read_mem_mb();
 
             let cached_disk = {
                 let cache = self.disk_cache.lock().unwrap_or_else(|e| e.into_inner());
@@ -54,36 +125,12 @@ impl SystemMonitorPort for SysinfoAdapter {
             let (disk_used_gb, disk_total_gb) = if let Some(metrics) = cached_disk {
                 metrics
             } else {
-                let fresh = tokio::task::spawn_blocking(|| {
-                    let disks = Disks::new_with_refreshed_list();
-                    // Prioritize root filesystem "/" to reflect the primary host storage accurately
-                    let root_disk = disks.iter().find(|d| d.mount_point() == std::path::Path::new("/"));
-                    let (total_bytes, available_bytes) = if let Some(root) = root_disk {
-                        (root.total_space(), root.available_space())
-                    } else {
-                        // Fallback: deduplicate by device name to prevent counting Docker overlay mounts repeatedly
-                        let mut seen = std::collections::HashSet::new();
-                        let mut total = 0u64;
-                        let mut available = 0u64;
-                        for disk in &disks {
-                            let dev = disk.name().to_string_lossy().to_string();
-                            if !dev.is_empty() && seen.insert(dev) {
-                                total += disk.total_space();
-                                available += disk.available_space();
-                            }
-                        }
-                        (total, available)
-                    };
-
-                    let disk_total_gb = total_bytes / (1024 * 1024 * 1024);
-                    let disk_used_gb = total_bytes.saturating_sub(available_bytes) / (1024 * 1024 * 1024);
-                    (disk_used_gb, disk_total_gb)
-                })
-                .await
-                .unwrap_or((0, 0));
+                let fresh = tokio::task::spawn_blocking(read_disk_space)
+                    .await
+                    .unwrap_or((0, 0));
 
                 let mut cache = self.disk_cache.lock().unwrap_or_else(|e| e.into_inner());
-                *cache = Some((std::time::Instant::now(), fresh));
+                *cache = Some((Instant::now(), fresh));
                 fresh
             };
 
@@ -106,8 +153,19 @@ mod tests {
     async fn test_sysinfo_adapter_get_metrics() {
         let adapter = SysinfoAdapter::new();
         let metrics = adapter.get_metrics().await;
-        // Total RAM should be > 0 on any standard Linux environment
-        assert!(metrics.ram_total_mb > 0);
+        // Total RAM and disk should be > 0 on standard Linux
+        assert!(metrics.ram_total_mb > 0, "Total RAM should be greater than 0");
+        assert!(metrics.disk_total_gb > 0, "Total disk should be greater than 0");
+    }
+
+    #[test]
+    fn test_read_cpu_and_mem() {
+        let (total_mb, used_mb) = read_mem_mb();
+        assert!(total_mb > 0);
+        assert!(used_mb <= total_mb);
+
+        let (used_gb, total_gb) = read_disk_space();
+        assert!(total_gb > 0);
+        assert!(used_gb <= total_gb);
     }
 }
-
