@@ -85,9 +85,7 @@ src/
 │   └── system.rs       # System metrics domain models
 ├── application/        # Application services & business logic orchestrators
 │   ├── auth_service.rs # WebAuthn challenge/registration orchestration & TTL cleanup
-│   ├── backup_service.rs # Hot snapshot, zip packaging, AES-GCM encryption & cloud sync
-│   ├── container_service.rs # Container lifecycle orchestration
-│   └── system_service.rs    # Resource metric aggregation
+│   └── backup_service.rs # Hot snapshot, zip packaging, AES-GCM encryption & cloud sync
 ├── infrastructure/     # Concrete adapters & external drivers
 │   ├── auth_store.rs   # JSON-backed single-admin credential store
 │   ├── backup_store.rs # JSON-backed backup configuration and history store

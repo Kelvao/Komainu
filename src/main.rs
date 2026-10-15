@@ -1,8 +1,6 @@
 use clap::Parser;
 use komainu::application::auth_service::AuthService;
 use komainu::application::backup_service::BackupService;
-use komainu::application::container_service::ContainerService;
-use komainu::application::system_service::SystemService;
 use komainu::cli::Cli;
 use komainu::config::Config;
 use komainu::infrastructure::auth_store::FileCredentialStore;
@@ -34,10 +32,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Configurando adaptador Docker em '{}'...", config.docker_socket);
     let docker_adapter = Arc::new(DockerAdapter::new(&config.docker_socket));
-    let container_service = Arc::new(ContainerService::new(
-        docker_adapter.clone(),
-        config.vw_container_name.clone(),
-    ));
 
     let backup_store = Arc::new(FileBackupStore::new(&config.backup_config_path));
     let pcloud_client = Arc::new(HttpPCloudClient::new());
@@ -53,14 +47,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     backup_service.clone().start_cron_loop();
 
     let system_adapter = SysinfoAdapter::new();
-    let system_service = Arc::new(SystemService::new(Arc::new(system_adapter)));
 
     let cookie_key = komainu::infrastructure::http::derive_cookie_key(&config.session_secret);
     let i18n = Arc::new(komainu::i18n::I18n::load(&config.app_lang));
 
     let state = AppState {
-        container_service,
-        system_service,
+        container_port: docker_adapter.clone(),
+        target_container: config.vw_container_name.clone(),
+        system_monitor: Arc::new(system_adapter),
         auth_service: auth_service.clone(),
         backup_service,
         cookie_key,

@@ -17,9 +17,8 @@ use webauthn_rs::prelude::{CreationChallengeResponse, PublicKeyCredential, Regis
 pub mod theme;
 
 use crate::application::auth_service::AuthService;
-use crate::application::container_service::ContainerService;
-use crate::application::system_service::SystemService;
-use crate::domain::container::ContainerState;
+use crate::domain::container::{ContainerPort, ContainerState};
+use crate::domain::system::SystemMonitorPort;
 
 use axum::extract::FromRef;
 
@@ -32,8 +31,9 @@ const WEBAUTHN_JSON_SCRIPT: &str = r#"!function(){"use strict";var e={};function
 
 #[derive(Clone)]
 pub struct AppState {
-    pub container_service: Arc<ContainerService>,
-    pub system_service: Arc<SystemService>,
+    pub container_port: Arc<dyn ContainerPort>,
+    pub target_container: String,
+    pub system_monitor: Arc<dyn SystemMonitorPort>,
     pub auth_service: Arc<AuthService>,
     pub backup_service: Arc<crate::application::backup_service::BackupService>,
     pub cookie_key: Key,
@@ -2255,7 +2255,7 @@ async fn container_start_handler(jar: SignedCookieJar, State(state): State<AppSt
     if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.start().await.err().map(|e| e.to_localized(&i18n));
+    let err = state.container_port.start(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
@@ -2264,7 +2264,7 @@ async fn container_stop_handler(jar: SignedCookieJar, State(state): State<AppSta
     if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.stop().await.err().map(|e| e.to_localized(&i18n));
+    let err = state.container_port.stop(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
@@ -2273,7 +2273,7 @@ async fn container_restart_handler(jar: SignedCookieJar, State(state): State<App
     if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.restart().await.err().map(|e| e.to_localized(&i18n));
+    let err = state.container_port.restart(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
@@ -2282,7 +2282,7 @@ async fn container_update_handler(jar: SignedCookieJar, State(state): State<AppS
     if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.update_image().await.err().map(|e| e.to_localized(&i18n));
+    let err = state.container_port.update_image(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
@@ -2291,13 +2291,13 @@ async fn container_rebuild_handler(jar: SignedCookieJar, State(state): State<App
     if !is_authenticated(&jar, &state) {
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
-    let err = state.container_service.rebuild().await.err().map(|e| e.to_localized(&i18n));
+    let err = state.container_port.rebuild(&state.target_container).await.err().map(|e| e.to_localized(&i18n));
     Html(render_dashboard_fragment(&state, &i18n, err).await).into_response()
 }
 
 async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Translations, action_error: Option<String>) -> String {
-    let status_res = state.container_service.status().await;
-    let metrics = state.system_service.get_metrics().await;
+    let status_res = state.container_port.get_status(&state.target_container).await;
+    let metrics = state.system_monitor.get_metrics().await;
 
     let error_banner = match action_error {
         Some(e) => format!(
@@ -2813,6 +2813,22 @@ mod tests {
         ))
     }
 
+    fn create_test_app_state(auth_service: Arc<AuthService>, i18n_lang: &str) -> AppState {
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        AppState {
+            container_port: Arc::new(MockContainerPort),
+            target_container: "vaultwarden".to_string(),
+            system_monitor: Arc::new(MockSystemMonitor),
+            auth_service,
+            backup_service: create_test_backup_service(),
+            cookie_key,
+            i18n: Arc::new(crate::i18n::I18n::load(i18n_lang)),
+            rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: "test_cid".to_string(),
+            pcloud_client_secret: "test_csec".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn test_health_check_handler() {
         assert_eq!(health_check().await, "OK");
@@ -2821,17 +2837,7 @@ mod tests {
     #[tokio::test]
     async fn test_webauthn_json_asset_route() {
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let router = create_router(AppState {
-            container_service: Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string())),
-            system_service: Arc::new(SystemService::new(Arc::new(MockSystemMonitor))),
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key: derive_cookie_key("test-secret"),
-            i18n: Arc::new(crate::i18n::I18n::load("en")),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: "test_cid".to_string(),
-            pcloud_client_secret: "test_csec".to_string(),
-        });
+        let router = create_router(create_test_app_state(auth_service, "en"));
 
         let req = Request::builder()
             .uri("/assets/webauthn-json.js")
@@ -2852,17 +2858,7 @@ mod tests {
     #[tokio::test]
     async fn test_theme_css_asset_route() {
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let router = create_router(AppState {
-            container_service: Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string())),
-            system_service: Arc::new(SystemService::new(Arc::new(MockSystemMonitor))),
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key: derive_cookie_key("test-secret"),
-            i18n: Arc::new(crate::i18n::I18n::load("en")),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: "test_cid".to_string(),
-            pcloud_client_secret: "test_csec".to_string(),
-        });
+        let router = create_router(create_test_app_state(auth_service, "en"));
 
         let req = Request::builder()
             .uri("/assets/theme.css")
@@ -2892,22 +2888,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_dashboard_fragment_generation() {
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service: container_service.clone(),
-            system_service: system_service.clone(),
-            auth_service: auth_service.clone(),
-            backup_service: create_test_backup_service(),
-            cookie_key: cookie_key.clone(),
-            i18n: i18n.clone(),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
 
         let fragment = render_dashboard_fragment(&state, &state.i18n, None).await;
         assert!(fragment.contains("Instância Vaultwarden"));
@@ -2926,17 +2908,7 @@ mod tests {
         assert!(fragment_err.contains("Falha ao iniciar"));
 
         // Test English fragment
-        let en_state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n: Arc::new(crate::i18n::I18n::load("en")),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let en_state = create_test_app_state(state.auth_service.clone(), "en");
         let en_fragment = render_dashboard_fragment(&en_state, &en_state.i18n, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
         assert!(en_fragment.contains("Container Resource Usage"));
@@ -2954,22 +2926,8 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n,
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
 
         let router = create_router(state);
 
@@ -3018,22 +2976,8 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service: auth_service.clone(),
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n,
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service.clone(), "pt-BR");
 
         let router = create_router(state);
 
@@ -3117,22 +3061,8 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n,
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
 
         let router = create_router(state);
 
@@ -3167,22 +3097,8 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n,
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
 
         let router = create_router(state);
 
@@ -3208,23 +3124,10 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
         auth_service.set_credential_tag("test_tag".to_string());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key: cookie_key.clone(),
-            i18n: i18n.clone(),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
+        let cookie_key = state.cookie_key.clone();
 
         let router = create_router(state);
 
@@ -3271,23 +3174,10 @@ mod tests {
         use axum::http::Request;
         use tower::ServiceExt;
 
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
         let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
         auth_service.set_credential_tag("test_tag".to_string());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key: cookie_key.clone(),
-            i18n: i18n.clone(),
-            rp_origin: "http://localhost:3000".to_string(),
-            pcloud_client_id: String::new(),
-            pcloud_client_secret: String::new(),
-        };
+        let state = create_test_app_state(auth_service, "pt-BR");
+        let cookie_key = state.cookie_key.clone();
 
         let router = create_router(state.clone());
 
