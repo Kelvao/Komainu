@@ -1,6 +1,6 @@
 use axum::extract::Request;
 use axum::middleware::{from_fn, Next};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
@@ -21,6 +21,30 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
             .unwrap(),
     );
     response
+}
+
+pub async fn csrf_protection_middleware(
+    state: AppState,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request.method() == axum::http::Method::POST {
+        let expected = state.rp_origin.trim_end_matches('/');
+        if !expected.is_empty() {
+            if let Some(origin) = request.headers().get("origin").and_then(|v| v.to_str().ok()) {
+                if origin.trim_end_matches('/') != expected {
+                    tracing::warn!("CSRF rejected: Origin '{origin}' does not match expected '{expected}'");
+                    return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Origin").into_response();
+                }
+            } else if let Some(referer) = request.headers().get("referer").and_then(|v| v.to_str().ok()) {
+                if !referer.starts_with(expected) {
+                    tracing::warn!("CSRF rejected: Referer '{referer}' does not match expected '{expected}'");
+                    return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Referer").into_response();
+                }
+            }
+        }
+    }
+    next.run(request).await
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -66,7 +90,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/stop", post(container_stop_handler))
         .route("/api/container/restart", post(container_restart_handler))
         .route("/api/container/update", post(container_update_handler))
-        .route("/api/container/rebuild", post(container_rebuild_handler))
-        .with_state(state)
         .layer(from_fn(security_headers_middleware))
+        .layer(from_fn({
+            let csrf_state = state.clone();
+            move |req, next| {
+                let s = csrf_state.clone();
+                async move { csrf_protection_middleware(s, req, next).await }
+            }
+        }))
+        .with_state(state)
 }

@@ -880,5 +880,43 @@ async fn test_rate_limiter_blocks_excessive_requests() {
     assert!(limiter.check("5.6.7.8")); // different IP allowed
 }
 
+#[tokio::test]
+async fn test_csrf_origin_validation() {
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    let state = create_test_app_state(auth_service, "pt-BR");
+    let router = create_router(state);
+
+    // 1. Untrusted origin -> 403 Forbidden
+    let req_evil = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .header("origin", "https://evil-attacker.com")
+        .body(Body::empty())
+        .unwrap();
+    let res_evil = router.clone().oneshot(req_evil).await.unwrap();
+    assert_eq!(res_evil.status(), StatusCode::FORBIDDEN);
+
+    // 2. Untrusted referer -> 403 Forbidden
+    let req_evil_ref = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .header("referer", "https://evil-attacker.com/malicious-page")
+        .body(Body::empty())
+        .unwrap();
+    let res_evil_ref = router.clone().oneshot(req_evil_ref).await.unwrap();
+    assert_eq!(res_evil_ref.status(), StatusCode::FORBIDDEN);
+
+    // 3. Trusted origin -> not blocked by CSRF middleware (will proceed to auth check)
+    let req_trusted = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .header("origin", "http://localhost:3000")
+        .body(Body::empty())
+        .unwrap();
+    let res_trusted = router.oneshot(req_trusted).await.unwrap();
+    assert_ne!(res_trusted.status(), StatusCode::FORBIDDEN);
+}
+
+
 
 
