@@ -90,14 +90,13 @@ impl AuthService {
     }
 
     pub async fn init_credential_tag(&self) {
-        if let Ok(keys) = self.store.load_credentials().await {
-            if let Some(first) = keys.first() {
+        if let Ok(keys) = self.store.load_credentials().await
+            && let Some(first) = keys.first() {
                 use sha2::{Digest, Sha256};
                 let hash = Sha256::digest(first.cred_id().as_ref());
                 let tag = format!("{:016x}", u64::from_be_bytes(hash[..8].try_into().unwrap()));
                 *self.cached_credential_tag.write().unwrap() = Some(tag);
             }
-        }
     }
 
     pub async fn set_registration_token(&self, token: String) {

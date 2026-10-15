@@ -100,8 +100,8 @@ fn is_authenticated(jar: &SignedCookieJar, state: &AppState) -> bool {
     };
     let val = cookie.value();
     let parts: Vec<&str> = val.split(':').collect();
-    if parts.len() == 3 && parts[0] == "admin" {
-        if let Ok(ts) = parts[1].parse::<u64>() {
+    if parts.len() == 3 && parts[0] == "admin"
+        && let Ok(ts) = parts[1].parse::<u64>() {
             let cookie_tag = parts[2];
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -113,7 +113,6 @@ fn is_authenticated(jar: &SignedCookieJar, state: &AppState) -> bool {
             let current_tag = state.auth_service.credential_tag();
             return !current_tag.is_empty() && cookie_tag == current_tag;
         }
-    }
     false
 }
 
