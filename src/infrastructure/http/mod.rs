@@ -215,7 +215,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -244,7 +244,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         {warning_box}
 
         <!-- Segmented Tab Switcher -->
-        <div class="grid grid-cols-2 gap-1 p-1 bg-[#090507] rounded-lg border border-white/[0.08] mb-6">
+        <div class="grid grid-cols-2 gap-1 p-1 bg-canvas rounded-lg border border-white/[0.08] mb-6">
             <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
                 <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                 <span>{tab_local}</span>
@@ -290,7 +290,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             </div>
 
             <!-- Live Status Bar -->
-            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-[#090507] border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
+            <div id="qr-status-box" class="w-full py-2.5 px-3 rounded-lg bg-canvas border border-white/[0.08] flex items-center justify-center gap-2 font-mono text-xs text-slate-300">
                 <span id="qr-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span id="qr-status-text">{qr_waiting}</span>
             </div>
@@ -661,7 +661,7 @@ async fn qr_login_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans">
-    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
+    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden text-center">
         <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mx-auto mb-4">
             ⚠️
         </div>
@@ -693,7 +693,7 @@ async fn qr_login_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -717,7 +717,7 @@ async fn qr_login_page(
                 </div>
             </div>
 
-            <div class="p-3.5 rounded-lg bg-[#090507] border border-white/[0.06] mb-6 text-xs font-mono text-slate-300 flex items-center gap-2.5">
+            <div class="p-3.5 rounded-lg bg-canvas border border-white/[0.06] mb-6 text-xs font-mono text-slate-300 flex items-center gap-2.5">
                 <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 <span>Sessão de login pendente no computador</span>
             </div>
@@ -739,7 +739,7 @@ async fn qr_login_page(
             </div>
             <h2 class="text-lg font-display font-bold text-white mb-2">{mobile_success_title}</h2>
             <p class="text-xs text-slate-300 font-sans leading-relaxed mb-6">{mobile_success_desc}</p>
-            <div class="py-2 px-3 rounded-lg bg-[#090507] border border-emerald-500/30 text-[11px] font-mono text-emerald-400 inline-block">
+            <div class="py-2 px-3 rounded-lg bg-canvas border border-emerald-500/30 text-[11px] font-mono text-emerald-400 inline-block">
                 SESSÃO DESBLOQUEADA NO COMPUTADOR
             </div>
         </div>
@@ -915,7 +915,7 @@ async fn register_page(
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex items-center justify-center p-4 antialiased font-sans selection:bg-rose-600 selection:text-white">
-    <div class="max-w-md w-full bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div class="max-w-md w-full bg-surface/95 border border-rose-500/20 rounded-xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         <!-- Top accent rule -->
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
@@ -1102,7 +1102,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     {head_tags}
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
-    <header class="border-b border-rose-500/15 bg-[#090507]/90 backdrop-blur-md sticky top-0 z-50">
+    <header class="border-b border-rose-500/15 bg-canvas/90 backdrop-blur-md sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-xl text-rose-400 shadow-[0_0_12px_rgba(244,63,94,0.25)]">
@@ -1329,7 +1329,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
     {error_banner}
 
     <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
-    <div class="bg-[#12090d]/95 border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+    <div class="bg-surface/95 border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden backdrop-blur-xl">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.06]">
@@ -1341,7 +1341,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <p class="text-xs text-slate-400 mt-1 font-mono">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-[#090507]/90 rounded-lg border border-white/[0.06]">
+            <div class="flex flex-wrap items-center gap-2 p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06]">
                 <button 
                     hx-post="{base_path}/api/container/start" 
                     hx-target="#dashboard-content" 
@@ -1397,26 +1397,26 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- CPU Container -->
-                <div class="bg-[#090507]/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
+                <div class="bg-canvas/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
                             <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
                         </div>
-                        <div class="w-full bg-[#180d13] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
                             <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- RAM Container -->
-                <div class="bg-[#090507]/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
+                <div class="bg-canvas/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
                             <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
                         </div>
-                        <div class="w-full bg-[#180d13] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
                             <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
                         </div>
                     </div>
@@ -1435,13 +1435,13 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Métrica CPU Host -->
-            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
                     </div>
-                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                    <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.35)]" style="width: {cpu_usage:.1}%"></div>
                     </div>
                 </div>
@@ -1452,13 +1452,13 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
 
             <!-- Métrica RAM Host -->
-            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
                     </div>
-                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                    <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-purple-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(168,85,247,0.35)]" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
@@ -1469,13 +1469,13 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
 
             <!-- Métrica Disco Host -->
-            <div class="bg-[#12090d]/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
                     </div>
-                    <div class="w-full bg-[#090507] h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                    <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-emerald-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.35)]" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>

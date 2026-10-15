@@ -5,30 +5,30 @@
 
 pub const KOMAINU_THEME_CSS: &str = r##"/* Hallmark · macrostructure: Workbench · genre: atmospheric · theme: Crimson Dark · anchor hue: ruby-rose */
 :root {
-  --bg-canvas: #090507;
-  --bg-surface: #12090d;
-  --bg-surface-elevated: #180d13;
-  --bg-surface-inset: #090507;
+  --bg-canvas: oklch(0.145 0.015 15);
+  --bg-surface: oklch(0.18 0.02 15);
+  --bg-surface-elevated: oklch(0.21 0.025 15);
+  --bg-surface-inset: oklch(0.145 0.015 15);
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-subtle-hover: rgba(255, 255, 255, 0.16);
-  --border-crimson: rgba(244, 63, 94, 0.18);
-  --border-crimson-hover: rgba(244, 63, 94, 0.40);
-  --accent-crimson: #e11d48;
-  --accent-crimson-light: #fb7185;
-  --accent-crimson-glow: rgba(225, 29, 72, 0.22);
+  --border-crimson: oklch(0.65 0.22 17 / 0.25);
+  --border-crimson-hover: oklch(0.65 0.22 17 / 0.45);
+  --accent-crimson: oklch(0.56 0.23 17);
+  --accent-crimson-light: oklch(0.72 0.18 17);
+  --accent-crimson-glow: oklch(0.56 0.23 17 / 0.22);
 }
 
 body {
   background-color: var(--bg-canvas);
   background-image: 
-    radial-gradient(circle at 50% -10%, rgba(225, 29, 72, 0.10) 0%, transparent 65%),
-    radial-gradient(rgba(244, 63, 94, 0.035) 1px, transparent 1px);
+    radial-gradient(circle at 50% -10%, oklch(0.56 0.23 17 / 0.10) 0%, transparent 65%),
+    radial-gradient(oklch(0.65 0.22 17 / 0.04) 1px, transparent 1px);
   background-size: 100% 100%, 24px 24px;
 }
 
 /* Foco acessível uniforme em tom carmesim */
 a:focus-visible, button:focus-visible, input:focus-visible {
-  outline: 2px solid #f43f5e;
+  outline: 2px solid oklch(0.65 0.22 17);
   outline-offset: 2px;
 }
 
@@ -47,11 +47,11 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   background: var(--bg-canvas);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(244, 63, 94, 0.2);
+  background: oklch(0.65 0.22 17 / 0.2);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(244, 63, 94, 0.4);
+  background: oklch(0.65 0.22 17 / 0.4);
 }
 "##;
 
@@ -75,6 +75,12 @@ pub fn render_head(page_title: &str, extra_head: &str) -> String {
               mono: ['"JetBrains Mono"', 'monospace'],
             }},
             colors: {{
+              canvas: 'var(--bg-canvas)',
+              surface: {{
+                DEFAULT: 'var(--bg-surface)',
+                elevated: 'var(--bg-surface-elevated)',
+                inset: 'var(--bg-surface-inset)',
+              }},
               crimson: {{
                 50: '#fff1f2',
                 100: '#ffe4e6',
