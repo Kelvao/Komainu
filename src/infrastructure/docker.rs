@@ -313,21 +313,26 @@ impl ContainerPort for DockerAdapter {
 
             if let Err(e) = docker.create_container(create_options, create_config).await {
                 // Rollback: restaurar nome do backup e reiniciar apenas se estava rodando
-                let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
-                if was_running {
-                    let _ = docker.start_container::<String>(&name, None).await;
-                }
+                execute_rollback(
+                    false,
+                    was_running,
+                    || async { Ok(()) },
+                    || async { docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await.map_err(|e| e.to_string()) },
+                    || async { docker.start_container::<String>(&name, None).await.map_err(|e| e.to_string()) },
+                ).await;
                 return Err(ContainerError::RebuildFailed(format!("Recreation failed (rolled back): {e}")));
             }
 
             // 6. Iniciar o novo container
             if let Err(e) = docker.start_container::<String>(&name, None).await {
                 // Rollback: remover novo container quebrado, restaurar backup e reiniciar apenas se estava rodando
-                let _ = docker.remove_container(&name, None).await;
-                let _ = docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await;
-                if was_running {
-                    let _ = docker.start_container::<String>(&name, None).await;
-                }
+                execute_rollback(
+                    true,
+                    was_running,
+                    || async { docker.remove_container(&name, None).await.map_err(|e| e.to_string()) },
+                    || async { docker.rename_container(&backup_name, RenameContainerOptions { name: name.clone() }).await.map_err(|e| e.to_string()) },
+                    || async { docker.start_container::<String>(&name, None).await.map_err(|e| e.to_string()) },
+                ).await;
                 return Err(ContainerError::StartFailed(format!("Start failed (rolled back): {e}")));
             }
 
@@ -381,6 +386,46 @@ impl ContainerPort for DockerAdapter {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RollbackActions {
+    pub removed_new: bool,
+    pub renamed_backup: bool,
+    pub restarted_original: bool,
+}
+
+pub(crate) async fn execute_rollback<FRem, FRen, FStart, Fut1, Fut2, Fut3>(
+    cleanup_new: bool,
+    was_running: bool,
+    mut remove_new: FRem,
+    mut rename_backup: FRen,
+    mut start_original: FStart,
+) -> RollbackActions
+where
+    FRem: FnMut() -> Fut1,
+    FRen: FnMut() -> Fut2,
+    FStart: FnMut() -> Fut3,
+    Fut1: std::future::Future<Output = Result<(), String>>,
+    Fut2: std::future::Future<Output = Result<(), String>>,
+    Fut3: std::future::Future<Output = Result<(), String>>,
+{
+    let mut actions = RollbackActions {
+        removed_new: false,
+        renamed_backup: false,
+        restarted_original: false,
+    };
+    if cleanup_new {
+        let _ = remove_new().await;
+        actions.removed_new = true;
+    }
+    let _ = rename_backup().await;
+    actions.renamed_backup = true;
+    if was_running {
+        let _ = start_original().await;
+        actions.restarted_original = true;
+    }
+    actions
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,5 +455,75 @@ mod tests {
             assert!(map.contains_key("new_container"));
             assert!(!map.contains_key("old_container"));
         }
+    }
+
+    #[tokio::test]
+    async fn test_rollback_on_create_failure_when_running() {
+        let actions = execute_rollback(
+            false,
+            true,
+            || async { panic!("Should not remove new container") },
+            || async { Ok(()) },
+            || async { Ok(()) },
+        )
+        .await;
+        assert_eq!(
+            actions,
+            RollbackActions {
+                removed_new: false,
+                renamed_backup: true,
+                restarted_original: true,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rollback_on_create_failure_when_stopped() {
+        let actions = execute_rollback(
+            false,
+            false,
+            || async { panic!("Should not remove new container") },
+            || async { Ok(()) },
+            || async { panic!("Should not start container if stopped") },
+        )
+        .await;
+        assert_eq!(
+            actions,
+            RollbackActions {
+                removed_new: false,
+                renamed_backup: true,
+                restarted_original: false,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rollback_on_start_failure() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let remove_called = std::sync::Arc::new(AtomicBool::new(false));
+        let remove_called_clone = remove_called.clone();
+        let actions = execute_rollback(
+            true,
+            true,
+            move || {
+                let flag = remove_called_clone.clone();
+                async move {
+                    flag.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+            || async { Ok(()) },
+            || async { Ok(()) },
+        )
+        .await;
+        assert!(remove_called.load(Ordering::SeqCst));
+        assert_eq!(
+            actions,
+            RollbackActions {
+                removed_new: true,
+                renamed_backup: true,
+                restarted_original: true,
+            }
+        );
     }
 }
