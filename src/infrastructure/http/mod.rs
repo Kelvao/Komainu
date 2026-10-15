@@ -1614,6 +1614,10 @@ async fn backup_download_handler(
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
+    if query.fileid == 0 {
+        return (StatusCode::BAD_REQUEST, i18n.common.operation_failed.clone()).into_response();
+    }
+
     let temp_dec_path = std::env::temp_dir().join(format!("komainu_dl_{}_{}.zip", query.fileid, Uuid::new_v4()));
     let _guard = crate::domain::backup::TempFileGuard(temp_dec_path.clone());
 
@@ -1649,10 +1653,14 @@ async fn backup_download_handler(
     if !clean_name.ends_with(".zip") {
         clean_name.push_str(".zip");
     }
-    let safe_name: String = clean_name
+    let mut safe_name: String = clean_name
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
         .collect();
+
+    if safe_name == ".zip" || safe_name.starts_with('.') {
+        safe_name = format!("backup_{}.zip", query.fileid);
+    }
 
     let content_disposition = format!("attachment; filename=\"{}\"", safe_name);
 
@@ -3375,12 +3383,32 @@ mod tests {
             .header("cookie", cookie_str)
             .body(Body::empty())
             .unwrap();
-        let res_frag_remote = router.oneshot(req_frag_remote).await.unwrap();
+        let res_frag_remote = router.clone().oneshot(req_frag_remote).await.unwrap();
         assert_eq!(res_frag_remote.status(), StatusCode::OK);
         let frag_bytes = to_bytes(res_frag_remote.into_body(), usize::MAX).await.unwrap();
         let frag_html = String::from_utf8(frag_bytes.to_vec()).unwrap();
         assert!(frag_html.contains("vaultwarden_backup_20261014_220000.zip.enc"));
         assert!(frag_html.contains("/api/backups/download?fileid=123456"));
         assert!(frag_html.contains("Baixar Descriptografado"));
+
+        // 12. Test fileid=0 returns 400 Bad Request
+        let req_dl_zero = Request::builder()
+            .uri("/api/backups/download?fileid=0")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_dl_zero = router.clone().oneshot(req_dl_zero).await.unwrap();
+        assert_eq!(res_dl_zero.status(), StatusCode::BAD_REQUEST);
+
+        // 13. Test filename fallback when query filename produces hidden file
+        let req_dl_hidden = Request::builder()
+            .uri("/api/backups/download?fileid=123456&filename=.enc")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_dl_hidden = router.oneshot(req_dl_hidden).await.unwrap();
+        assert_eq!(res_dl_hidden.status(), StatusCode::OK);
+        let cd_hidden = res_dl_hidden.headers().get("content-disposition").unwrap().to_str().unwrap();
+        assert!(cd_hidden.contains("attachment; filename=\"backup_123456.zip\""));
     }
 }
