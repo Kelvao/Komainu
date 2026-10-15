@@ -16,10 +16,23 @@ pub struct Config {
 }
 
 pub(crate) fn clean_env_value(val: &str) -> String {
-    if let Some((clean, _)) = val.split_once('#') {
-        clean.trim().to_string()
+    let trimmed = val.trim();
+    if trimmed.starts_with('#') {
+        return String::new();
+    }
+    let space_idx = trimmed.find(" #");
+    let tab_idx = trimmed.find("\t#");
+    let comment_idx = match (space_idx, tab_idx) {
+        (Some(s), Some(t)) => Some(s.min(t)),
+        (Some(s), None) => Some(s),
+        (None, Some(t)) => Some(t),
+        (None, None) => None,
+    };
+
+    if let Some(pos) = comment_idx {
+        trimmed[..pos].trim().to_string()
     } else {
-        val.trim().to_string()
+        trimmed.to_string()
     }
 }
 
@@ -113,5 +126,9 @@ mod tests {
         assert_eq!(clean_env_value("pt-BR # Options: en, pt-BR"), "pt-BR");
         assert_eq!(clean_env_value("  127.0.0.1  "), "127.0.0.1");
         assert_eq!(clean_env_value("3000 # default port"), "3000");
+        assert_eq!(clean_env_value("3000\t# tab comment"), "3000");
+        assert_eq!(clean_env_value("s3cr3t#123!#abc"), "s3cr3t#123!#abc");
+        assert_eq!(clean_env_value("s3cr3t#123! # comment"), "s3cr3t#123!");
+        assert_eq!(clean_env_value("# full comment line"), "");
     }
 }
