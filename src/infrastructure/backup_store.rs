@@ -13,6 +13,8 @@ struct BackupStoreData {
     pub history: Vec<BackupRecord>,
 }
 
+const MAX_BACKUP_HISTORY_ENTRIES: usize = 50;
+
 pub struct FileBackupStore {
     path: PathBuf,
     secret: Option<String>,
@@ -91,6 +93,11 @@ impl FileBackupStore {
             data.config.encryption_password = decrypt_field(&data.config.encryption_password, sec)?;
             data.config.pcloud_token = decrypt_field(&data.config.pcloud_token, sec)?;
             data.config.pcloud_client_secret = decrypt_field(&data.config.pcloud_client_secret, sec)?;
+        }
+
+        if data.history.len() > MAX_BACKUP_HISTORY_ENTRIES {
+            let excess = data.history.len() - MAX_BACKUP_HISTORY_ENTRIES;
+            data.history.drain(0..excess);
         }
 
         Ok(data)
@@ -180,6 +187,10 @@ impl BackupConfigStorePort for FileBackupStore {
                 self.read_data()?
             };
             data.history.push(record);
+            if data.history.len() > MAX_BACKUP_HISTORY_ENTRIES {
+                let excess = data.history.len() - MAX_BACKUP_HISTORY_ENTRIES;
+                data.history.drain(0..excess);
+            }
             self.write_data(&data)?;
             *cache = Some(data);
             Ok(())
@@ -245,8 +256,34 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn test_file_backup_store_caps_history() {
+        let dir = tempfile_dir("test_file_backup_store_caps");
+        let path = dir.join("backup_store.json");
+        let store = FileBackupStore::with_secret(&path, Some("secret".to_string()));
+
+        for i in 0..60 {
+            let record = BackupRecord {
+                id: format!("rec-{i}"),
+                timestamp: 1700000000 + i as u64,
+                filename: format!("backup_{i}.zip.enc"),
+                size_bytes: 1000,
+                duration_secs: 1,
+                status: BackupStatus::Success,
+            };
+            store.add_record(record).await.unwrap();
+        }
+
+        let history = store.load_history().await.unwrap();
+        assert_eq!(history.len(), MAX_BACKUP_HISTORY_ENTRIES);
+        assert_eq!(history.first().unwrap().id, "rec-10");
+        assert_eq!(history.last().unwrap().id, "rec-59");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     fn tempfile_dir(prefix: &str) -> PathBuf {
-        let tmp = std::env::temp_dir().join(format!("komainu_{}_{}", prefix, std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("komainu_{}_{}_{}", prefix, std::process::id(), uuid::Uuid::new_v4()));
         let _ = fs::create_dir_all(&tmp);
         tmp
     }
