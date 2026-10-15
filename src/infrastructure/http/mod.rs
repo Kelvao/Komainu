@@ -25,6 +25,7 @@ use axum::extract::FromRef;
 
 const SESSION_COOKIE: &str = "komainu_session";
 const LANG_COOKIE: &str = "komainu_lang";
+const PCLOUD_OAUTH_COOKIE: &str = "komainu_pcloud_oauth";
 const SESSION_DURATION_SECS: u64 = 7 * 24 * 3600; // 7 days
 
 const WEBAUTHN_JSON_SCRIPT: &str = r#"!function(){"use strict";var e={};function t(e){const t="==".slice(0,(4-e.length%4)%4),n=e.replace(/-/g,"+").replace(/_/g,"/")+t,r=atob(n),c=new ArrayBuffer(r.length),o=new Uint8Array(c);for(let e=0;e<r.length;e++)o[e]=r.charCodeAt(e);return c}function n(e){const t=new Uint8Array(e);let n="";for(const e of t)n+=String.fromCharCode(e);return btoa(n).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"")}function r(e,t,n){if("copy"===t)return n;if("convert"===t)return e(n);if(t instanceof Array)return n.map((n=>r(e,t[0],n)));if(t instanceof Object){const c={};for(const[o,i]of Object.entries(t))if(o in n)null!=n[o]?c[o]=r(e,i.schema,n[o]):c[o]=null;else if(i.required)throw new Error("Missing key: "+o);return c}}function c(e){return{required:!0,schema:e}}function o(e){return{required:!1,schema:e}}const i={type:c("copy"),id:c("convert"),transports:o("copy")},a={appid:o("copy"),appidExclude:o("copy"),credProps:o("copy")},s={appid:o("copy"),appidExclude:o("copy"),credProps:o("copy")},l={publicKey:c({rp:c("copy"),user:c({id:c("convert"),name:c("copy"),displayName:c("copy")}),challenge:c("convert"),pubKeyCredParams:c("copy"),timeout:o("copy"),excludeCredentials:o([i]),authenticatorSelection:o("copy"),attestation:o("copy"),extensions:o(a)}),signal:o("copy")},p={type:c("copy"),id:c("copy"),rawId:c("convert"),response:c({clientDataJSON:c("convert"),attestationObject:c("convert")}),clientExtensionResults:c(s)},u={mediation:o("copy"),publicKey:c({challenge:c("convert"),timeout:o("copy"),rpId:o("copy"),allowCredentials:o([i]),userVerification:o("copy"),extensions:o(a)}),signal:o("copy")},y={type:c("copy"),id:c("copy"),rawId:c("convert"),response:c({clientDataJSON:c("convert"),authenticatorData:c("convert"),signature:c("convert"),userHandle:c("convert")}),clientExtensionResults:c(s)},d={credentialCreationOptions:l,publicKeyCredentialWithAttestation:p,credentialRequestOptions:u,publicKeyCredentialWithAssertion:y};e.get=async function(e){return function(e){const t=e;return t.clientExtensionResults=e.getClientExtensionResults(),r(n,y,t)}(await navigator.credentials.get(function(e){return r(t,u,e)}(e)))},e.create=async function(e){return function(e){const t=e;return t.clientExtensionResults=e.getClientExtensionResults(),r(n,p,t)}(await navigator.credentials.create(function(e){return r(t,l,e)}(e)))},e.supported=function(){return!!(navigator.credentials&&navigator.credentials.create&&navigator.credentials.get&&window.PublicKeyCredential)},e.schema=d,globalThis.webauthnJSON=e;}();"#;
@@ -1227,6 +1228,7 @@ async fn backups_page(
             "missing_client_id" => "Client ID da aplicação pCloud não foi configurado.",
             "missing_code" => "Código de autorização OAuth ausente.",
             "missing_app_credentials" => "Client ID ou Client Secret ausentes para troca de token.",
+            "invalid_oauth_state" => "Estado da requisição OAuth inválido ou expirado (possível CSRF).",
             _ => err,
         };
         Some((false, format!("{}: {msg}", i18n.backups.pcloud_auth_failed)))
@@ -1379,6 +1381,14 @@ async fn pcloud_oauth_authorize_handler(
     let redirect_uri = format!("{}/api/backups/pcloud/callback", state.rp_origin.trim_end_matches('/'));
     let state_token = Uuid::new_v4().to_string();
 
+    let mut oauth_cookie = Cookie::new(PCLOUD_OAUTH_COOKIE, state_token.clone());
+    oauth_cookie.set_http_only(true);
+    oauth_cookie.set_secure(state.rp_origin.starts_with("https://"));
+    oauth_cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+    oauth_cookie.set_path("/");
+    oauth_cookie.set_max_age(time::Duration::minutes(10));
+    let jar = jar.add(oauth_cookie);
+
     let auth_url = format!(
         "https://my.pcloud.com/oauth2/authorize?client_id={}&response_type=code&redirect_uri={}&state={}",
         crate::infrastructure::pcloud::urlencoding(effective_client_id),
@@ -1386,12 +1396,13 @@ async fn pcloud_oauth_authorize_handler(
         crate::infrastructure::pcloud::urlencoding(&state_token),
     );
 
-    Redirect::to(&auth_url).into_response()
+    (jar, Redirect::to(&auth_url)).into_response()
 }
 
 #[derive(Deserialize, Default)]
 struct PCloudCallbackQuery {
     code: Option<String>,
+    state: Option<String>,
     hostname: Option<String>,
     locationid: Option<u32>,
     error: Option<String>,
@@ -1407,17 +1418,33 @@ async fn pcloud_oauth_callback_handler(
         return Redirect::to("/login").into_response();
     }
 
+    let saved_state = jar.get(PCLOUD_OAUTH_COOKIE).map(|c| c.value().to_string());
+    let mut remove_cookie = Cookie::new(PCLOUD_OAUTH_COOKIE, "");
+    remove_cookie.set_path("/");
+    remove_cookie.set_max_age(time::Duration::seconds(0));
+    let jar = jar.add(remove_cookie);
+
     if let Some(err) = query.error.or(query.error_description) {
-        return Redirect::to(&format!(
-            "/backups?pcloud_error={}",
-            crate::infrastructure::pcloud::urlencoding(&err)
-        ))
-        .into_response();
+        return (
+            jar,
+            Redirect::to(&format!(
+                "/backups?pcloud_error={}",
+                crate::infrastructure::pcloud::urlencoding(&err)
+            )),
+        )
+            .into_response();
+    }
+
+    match (query.state.as_deref(), saved_state.as_deref()) {
+        (Some(qs), Some(ss)) if qs == ss => {}
+        _ => {
+            return (jar, Redirect::to("/backups?pcloud_error=invalid_oauth_state")).into_response();
+        }
     }
 
     let code = match query.code {
         Some(c) if !c.is_empty() => c,
-        _ => return Redirect::to("/backups?pcloud_error=missing_code").into_response(),
+        _ => return (jar, Redirect::to("/backups?pcloud_error=missing_code")).into_response(),
     };
 
     let mut cfg = state.backup_service.get_config().await.unwrap_or_default();
@@ -1433,7 +1460,7 @@ async fn pcloud_oauth_callback_handler(
     };
 
     if client_id.is_empty() || client_secret.is_empty() {
-        return Redirect::to("/backups?pcloud_error=missing_app_credentials").into_response();
+        return (jar, Redirect::to("/backups?pcloud_error=missing_app_credentials")).into_response();
     }
 
     let hostname = if let Some(h) = query.hostname.filter(|h| !h.is_empty()) {
@@ -1476,26 +1503,30 @@ async fn pcloud_oauth_callback_handler(
                     cfg.pcloud_token = access_token;
                     cfg.pcloud_region = region;
                     let _ = state.backup_service.save_config(&cfg).await;
-                    Redirect::to("/backups?pcloud_connected=1").into_response()
+                    (jar, Redirect::to("/backups?pcloud_connected=1")).into_response()
                 } else {
                     let err = json.error.unwrap_or_else(|| format!("result {:?}", json.result));
-                    Redirect::to(&format!(
-                        "/backups?pcloud_error={}",
-                        crate::infrastructure::pcloud::urlencoding(&err)
-                    ))
-                    .into_response()
+                    (
+                        jar,
+                        Redirect::to(&format!(
+                            "/backups?pcloud_error={}",
+                            crate::infrastructure::pcloud::urlencoding(&err)
+                        )),
+                    )
+                        .into_response()
                 }
             } else {
-                Redirect::to("/backups?pcloud_error=invalid_token_response").into_response()
+                (jar, Redirect::to("/backups?pcloud_error=invalid_token_response")).into_response()
             }
         }
-        Err(e) => {
+        Err(e) => (
+            jar,
             Redirect::to(&format!(
                 "/backups?pcloud_error={}",
                 crate::infrastructure::pcloud::urlencoding(&e.to_string())
-            ))
-            .into_response()
-        }
+            )),
+        )
+            .into_response(),
     }
 }
 
