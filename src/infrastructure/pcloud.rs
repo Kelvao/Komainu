@@ -102,10 +102,9 @@ impl PCloudClientPort for HttpPCloudClient {
             let folder_param = normalize_folder_param(&folder);
 
             let url = format!(
-                "https://{}/uploadfile?{}&access_token={}&nopartial=1",
+                "https://{}/uploadfile?{}&nopartial=1",
                 region.api_host(),
-                folder_param,
-                token
+                folder_param
             );
 
             let stream_body = FileStreamBody::new(file, file_len);
@@ -117,6 +116,7 @@ impl PCloudClientPort for HttpPCloudClient {
             let res = self
                 .client
                 .post(&url)
+                .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
                 .multipart(form)
                 .send()
                 .await
@@ -176,15 +176,15 @@ impl PCloudClientPort for HttpPCloudClient {
             let folder_param = normalize_folder_param(&folder);
 
             let url = format!(
-                "https://{}/listfolder?{}&access_token={}",
+                "https://{}/listfolder?{}",
                 region.api_host(),
-                folder_param,
-                token
+                folder_param
             );
 
             let res = self
                 .client
                 .get(&url)
+                .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
                 .send()
                 .await
                 .map_err(|e| BackupError::PCloudUploadFailed(format!("HTTP listfolder request failed: {e}")))?;
@@ -268,15 +268,15 @@ impl PCloudClientPort for HttpPCloudClient {
             }
 
             let url = format!(
-                "https://{}/getfilelink?fileid={}&access_token={}",
+                "https://{}/getfilelink?fileid={}",
                 region.api_host(),
-                fileid,
-                token
+                fileid
             );
 
             let res = self
                 .client
                 .get(&url)
+                .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
                 .send()
                 .await
                 .map_err(|e| BackupError::PCloudUploadFailed(format!("HTTP getfilelink request failed: {e}")))?;
