@@ -1395,30 +1395,26 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <h3 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{container_section}</h3>
                 <div class="flex-1 h-px bg-white/[0.04]"></div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-1">
                 <!-- CPU Container -->
-                <div class="bg-canvas/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
-                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
-                        </div>
-                        <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                            <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
-                        </div>
+                <div class="flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
+                    </div>
+                    <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
                     </div>
                 </div>
 
                 <!-- RAM Container -->
-                <div class="bg-canvas/75 border border-white/[0.06] rounded-lg p-4 flex flex-col justify-between hover:border-rose-500/30 transition-colors">
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
-                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
-                        </div>
-                        <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                            <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
-                        </div>
+                <div class="flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
+                    </div>
+                    <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
+                        <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
                     </div>
                 </div>
             </div>
