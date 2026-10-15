@@ -3,7 +3,7 @@ use crate::domain::backup::{
     BackupStatus, PCloudClientPort,
 };
 use crate::domain::container::ContainerPort;
-use chrono::Local;
+use chrono::{Local, Timelike};
 use std::fs;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
@@ -416,17 +416,23 @@ impl BackupService {
                     }
                 };
 
-                let now_utc = chrono::Utc::now();
-                let current_minute = now_utc.timestamp() / 60;
+                let now_local = Local::now();
+                let current_minute = now_local.timestamp() / 60;
 
-                // Check if current minute should trigger
-                // We check if the next scheduled time was at the start of this minute
-                let start_of_this_min = chrono::DateTime::from_timestamp(current_minute * 60, 0)
-                    .unwrap_or(now_utc);
+                // Check if current minute should trigger using host local time
+                let start_of_this_min = now_local
+                    .date_naive()
+                    .and_hms_opt(now_local.hour(), now_local.minute(), 0)
+                    .and_then(|naive| naive.and_local_timezone(Local).single())
+                    .unwrap_or(now_local);
                 let mut should_run = false;
 
+                let window_start = start_of_this_min
+                    .checked_sub_signed(chrono::Duration::seconds(1))
+                    .unwrap_or(start_of_this_min);
+
                 // Look up scheduled events in this minute window
-                if let Some(next) = schedule.after(&start_of_this_min.checked_sub_signed(chrono::Duration::seconds(1)).unwrap_or(start_of_this_min)).next() {
+                if let Some(next) = schedule.after(&window_start).next() {
                     let next_minute = next.timestamp() / 60;
                     if next_minute == current_minute {
                         let mut last_min = self.last_run_minute.lock().await;
