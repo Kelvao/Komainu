@@ -798,3 +798,53 @@ async fn test_backup_api_endpoints() {
     let cd_hidden = res_dl_hidden.headers().get("content-disposition").unwrap().to_str().unwrap();
     assert!(cd_hidden.contains("attachment; filename=\"backup_123456.zip\""));
 }
+
+#[tokio::test]
+async fn test_logout_invalidates_session_server_side() {
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    auth_service.set_credential_tag("active_tag".to_string());
+    let state = create_test_app_state(auth_service.clone(), "pt-BR");
+    let cookie_key = state.cookie_key.clone();
+    let router = create_router(state);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let jar = SignedCookieJar::new(cookie_key);
+    let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:active_tag"));
+    cookie.set_path("/");
+    let jar = jar.add(cookie);
+    let cookie_res = (jar, StatusCode::OK).into_response();
+    let cookie_str = cookie_res.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap();
+
+    // 1. Session is valid initially
+    let req_before = Request::builder()
+        .uri("/backups")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_before = router.clone().oneshot(req_before).await.unwrap();
+    assert_eq!(res_before.status(), StatusCode::OK);
+
+    // 2. Perform POST /logout
+    let req_logout = Request::builder()
+        .uri("/logout")
+        .method("POST")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_logout = router.clone().oneshot(req_logout).await.unwrap();
+    assert_eq!(res_logout.status(), StatusCode::SEE_OTHER);
+
+    // 3. Captured cookie is now rejected because server invalidated the session tag
+    let req_after = Request::builder()
+        .uri("/backups")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_after = router.oneshot(req_after).await.unwrap();
+    assert_eq!(res_after.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res_after.headers().get("location").unwrap().to_str().unwrap(), "/login");
+}
+

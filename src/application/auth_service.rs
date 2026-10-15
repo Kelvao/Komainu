@@ -89,6 +89,11 @@ impl AuthService {
         *self.cached_credential_tag.write().unwrap() = Some(tag);
     }
 
+    pub fn invalidate_sessions(&self) {
+        let new_tag = Uuid::new_v4().to_string();
+        *self.cached_credential_tag.write().unwrap() = Some(new_tag);
+    }
+
     pub async fn init_credential_tag(&self) {
         if let Ok(keys) = self.store.load_credentials().await
             && let Some(first) = keys.first() {

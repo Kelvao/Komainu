@@ -82,7 +82,8 @@ pub async fn login_finish_handler(
     }
 }
 
-pub async fn logout_handler(jar: SignedCookieJar, State(_state): State<AppState>) -> Response {
+pub async fn logout_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+    state.auth_service.invalidate_sessions();
     let mut remove_cookie = Cookie::new(SESSION_COOKIE, "");
     remove_cookie.set_path("/");
     let jar = jar.remove(remove_cookie);
