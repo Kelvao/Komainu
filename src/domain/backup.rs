@@ -178,6 +178,7 @@ pub fn encrypt_file_aes_256_gcm(
 
     let mut in_buf = [0u8; 64 * 1024];
     let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
+    let mut bytes_since_yield = 0usize;
 
     loop {
         let n = in_file.read(&mut in_buf)
@@ -189,6 +190,12 @@ pub fn encrypt_file_aes_256_gcm(
             .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
         out_file.write_all(&out_buf[..count])
             .map_err(|e| BackupError::IoError(format!("Failed writing ciphertext chunk: {e}")))?;
+
+        bytes_since_yield += n;
+        if bytes_since_yield >= 5 * 1024 * 1024 {
+            bytes_since_yield = 0;
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     let final_count = crypter.finalize(&mut out_buf)
@@ -284,6 +291,7 @@ pub fn decrypt_file_aes_256_gcm(
         let mut in_buf = [0u8; 64 * 1024];
         let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
         let mut total_written = 0u64;
+        let mut bytes_since_yield = 0usize;
 
         loop {
             let n = in_file.read(&mut in_buf)
@@ -297,6 +305,12 @@ pub fn decrypt_file_aes_256_gcm(
                 out_file.write_all(&out_buf[..count])
                     .map_err(|e| BackupError::IoError(format!("Failed writing decrypted chunk: {e}")))?;
                 total_written += count as u64;
+            }
+
+            bytes_since_yield += n;
+            if bytes_since_yield >= 5 * 1024 * 1024 {
+                bytes_since_yield = 0;
+                std::thread::sleep(std::time::Duration::from_millis(5));
             }
         }
 
