@@ -48,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cookie_key,
         i18n: i18n.clone(),
         base_path: config.base_path.clone(),
+        rp_origin: config.rp_origin.clone(),
     };
 
     if args.register {

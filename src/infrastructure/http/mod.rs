@@ -36,6 +36,7 @@ pub struct AppState {
     pub cookie_key: Key,
     pub i18n: Arc<crate::i18n::Translations>,
     pub base_path: String,
+    pub rp_origin: String,
 }
 
 impl FromRef<AppState> for Key {
@@ -589,7 +590,7 @@ async fn qr_start_handler(
 ) -> Response {
     let qr_id = state.auth_service.create_qr_session().await;
 
-    let origin = query.origin.filter(|o| !o.is_empty()).unwrap_or_else(|| {
+    let host_origin = {
         let proto = headers
             .get("x-forwarded-proto")
             .and_then(|v| v.to_str().ok())
@@ -600,7 +601,24 @@ async fn qr_start_handler(
             .and_then(|v| v.to_str().ok())
             .unwrap_or("localhost");
         format!("{proto}://{host}")
-    });
+    };
+
+    let origin = if let Some(q_origin) = query.origin.filter(|o| !o.is_empty()) {
+        if (!state.rp_origin.is_empty() && q_origin == state.rp_origin) || q_origin == host_origin {
+            q_origin
+        } else {
+            tracing::warn!("Untrusted QR origin rejected ({q_origin}), falling back to safe origin");
+            if !state.rp_origin.is_empty() {
+                state.rp_origin.clone()
+            } else {
+                host_origin
+            }
+        }
+    } else if !state.rp_origin.is_empty() {
+        state.rp_origin.clone()
+    } else {
+        host_origin
+    };
 
     let qr_url = if state.base_path.is_empty() {
         format!("{origin}/qr-login?token={qr_id}")
@@ -1664,6 +1682,7 @@ mod tests {
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
 
         let fragment = render_dashboard_fragment(&state, &state.i18n, None).await;
@@ -1690,6 +1709,7 @@ mod tests {
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             base_path: "/komainu".to_string(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
         let subpath_fragment = render_dashboard_fragment(&subpath_state, &subpath_state.i18n, None).await;
         assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/start\""));
@@ -1703,6 +1723,7 @@ mod tests {
             cookie_key,
             i18n: Arc::new(crate::i18n::I18n::load("en")),
             base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
         let en_fragment = render_dashboard_fragment(&en_state, &en_state.i18n, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
@@ -1733,6 +1754,7 @@ mod tests {
             cookie_key,
             i18n,
             base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
 
         let router = create_router(state);
@@ -1794,6 +1816,7 @@ mod tests {
             cookie_key,
             i18n,
             base_path: "/komainu".to_string(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
 
         let router = create_router(state);
@@ -1833,6 +1856,7 @@ mod tests {
             cookie_key,
             i18n,
             base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
         };
 
         let router = create_router(state);
@@ -1898,5 +1922,44 @@ mod tests {
         let poll3_bytes = to_bytes(res_poll3.into_body(), usize::MAX).await.unwrap();
         let poll3_json: serde_json::Value = serde_json::from_slice(&poll3_bytes).unwrap();
         assert_eq!(poll3_json["status"], "approved");
+    }
+
+    #[tokio::test]
+    async fn test_qr_origin_sanitization() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
+        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
+        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
+        let i18n = Arc::new(crate::i18n::I18n::load("pt-BR"));
+        let state = AppState {
+            container_service,
+            system_service,
+            auth_service,
+            cookie_key,
+            i18n,
+            base_path: String::new(),
+            rp_origin: "http://localhost:3000".to_string(),
+        };
+
+        let router = create_router(state);
+
+        // Attempt to pass an arbitrary external origin
+        let req_evil = Request::builder()
+            .uri("/api/auth/qr_start?origin=https://evil.com")
+            .body(Body::empty())
+            .unwrap();
+        let res_evil = router.oneshot(req_evil).await.unwrap();
+        assert_eq!(res_evil.status(), StatusCode::OK);
+        let bytes = to_bytes(res_evil.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let qr_url = json["qr_url"].as_str().unwrap();
+
+        // Must reject evil.com and use configured rp_origin
+        assert!(!qr_url.contains("evil.com"));
+        assert!(qr_url.starts_with("http://localhost:3000/qr-login?token="));
     }
 }
