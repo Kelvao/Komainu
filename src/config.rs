@@ -11,7 +11,6 @@ pub struct Config {
     pub rp_origin: String,
     pub credentials_path: String,
     pub app_lang: String,
-    pub base_path: String,
     pub vw_data_path: String,
     pub backup_config_path: String,
 }
@@ -71,17 +70,6 @@ impl Config {
         let app_lang_raw = env::var("APP_LANG").unwrap_or_else(|_| "pt-BR".to_string());
         let app_lang = clean_env_value(&app_lang_raw);
 
-        let base_path_raw = env::var("BASE_PATH").unwrap_or_default();
-        let base_path = {
-            let without_comment = clean_env_value(&base_path_raw);
-            let trimmed = without_comment.trim_matches('/');
-            if trimmed.is_empty() {
-                String::new()
-            } else {
-                format!("/{}", trimmed)
-            }
-        };
-
         let vw_data_path_raw = env::var("VW_DATA_PATH").unwrap_or_else(|_| "vw-data".to_string());
         let vw_data_path = clean_env_value(&vw_data_path_raw);
 
@@ -98,7 +86,6 @@ impl Config {
             rp_origin,
             credentials_path,
             app_lang,
-            base_path,
             vw_data_path,
             backup_config_path,
         })
@@ -118,7 +105,6 @@ mod tests {
         assert_eq!(c.server_port, 3000);
         assert_eq!(c.rp_id, "localhost");
         assert_eq!(c.app_lang, "pt-BR");
-        assert_eq!(c.base_path, "");
     }
 
     #[test]

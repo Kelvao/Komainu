@@ -64,7 +64,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         backup_service,
         cookie_key,
         i18n: i18n.clone(),
-        base_path: config.base_path.clone(),
         rp_origin: config.rp_origin.clone(),
     };
 
@@ -83,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let token = Uuid::new_v4().to_string();
         auth_service.set_registration_token(token.clone()).await;
 
-        let reg_url = format!("{}{}/register?token={}", config.rp_origin.trim_end_matches('/'), config.base_path, token);
+        let reg_url = format!("{}/register?token={}", config.rp_origin.trim_end_matches('/'), token);
 
         println!("\n========================================================");
         println!("           {}", i18n.cli.reg_title);

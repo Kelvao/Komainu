@@ -111,7 +111,6 @@ cp .env.example .env
 | `RP_ORIGIN` | `http://localhost:3000` | WebAuthn Relying Party Origin (e.g., `https://komainu.example.com`). |
 | `CREDENTIALS_PATH` | `credentials.json` | File path where the admin passkey credential is saved. |
 | `APP_LANG` | `en` | Interface & CLI language (`en`, `pt-BR`). |
-| `BASE_PATH` | `""` | Optional subpath prefix when Komainu is mounted under a reverse proxy route (e.g., `/komainu`). |
 
 ### `.env.example`
 
@@ -125,7 +124,8 @@ RP_ID=localhost
 RP_ORIGIN=http://localhost:3000
 CREDENTIALS_PATH=credentials.json
 APP_LANG=en # Options: en, pt-BR
-BASE_PATH= # Optional: subpath when using reverse proxy (e.g., /komainu)
+VW_DATA_PATH=vw-data # Path to Vaultwarden data volume on host
+BACKUP_CONFIG_PATH=backup_config.json # Path to store backup configuration and history
 ```
 
 > [!IMPORTANT]
@@ -252,30 +252,9 @@ sudo systemctl enable --now komainu
 
 ### Caddy Reverse Proxy (`Caddyfile`)
 
-**Option A: Dedicated subdomain**
 ```caddy
 komainu.yourdomain.com {
     reverse_proxy 127.0.0.1:3000
-}
-```
-
-**Option B: Subpath on existing Vaultwarden domain (`BASE_PATH=/komainu`)**
-```caddy
-vaultwarden.yourdomain.com {
-    redir /komainu /komainu/
-
-    # Strip prefix when proxying (or use 'handle /komainu/*' to preserve it;
-    # Komainu's dual routing supports both out of the box!)
-    handle_path /komainu/* {
-        reverse_proxy 127.0.0.1:3000
-    }
-
-    handle {
-        reverse_proxy 127.0.0.1:8080 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_host}
-        }
-    }
 }
 ```
 

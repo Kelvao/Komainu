@@ -37,7 +37,6 @@ pub struct AppState {
     pub backup_service: Arc<crate::application::backup_service::BackupService>,
     pub cookie_key: Key,
     pub i18n: Arc<crate::i18n::Translations>,
-    pub base_path: String,
     pub rp_origin: String,
 }
 
@@ -54,8 +53,7 @@ pub fn derive_cookie_key(secret: &str) -> Key {
 }
 
 pub fn create_router(state: AppState) -> Router {
-    let base_path = state.base_path.clone();
-    let app = Router::new()
+    Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
         .route("/set-lang", get(set_lang_handler))
@@ -83,13 +81,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/restart", post(container_restart_handler))
         .route("/api/container/update", post(container_update_handler))
         .route("/api/container/rebuild", post(container_rebuild_handler))
-        .with_state(state);
-
-    if !base_path.is_empty() {
-        Router::new().nest(&base_path, app.clone()).merge(app)
-    } else {
-        app
-    }
+        .with_state(state)
 }
 
 fn is_authenticated(jar: &SignedCookieJar) -> bool {
@@ -118,7 +110,7 @@ struct SetLangQuery {
 
 async fn set_lang_handler(
     jar: SignedCookieJar,
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Query(query): Query<SetLangQuery>,
 ) -> (SignedCookieJar, Response) {
     let target = query.lang.unwrap_or_default();
@@ -134,13 +126,7 @@ async fn set_lang_handler(
     let redirect_url = query
         .redirect
         .filter(|r| r.starts_with('/') && !r.starts_with("//"))
-        .unwrap_or_else(|| {
-            if state.base_path.is_empty() {
-                "/".to_string()
-            } else {
-                format!("{}/", state.base_path)
-            }
-        });
+        .unwrap_or_else(|| "/".to_string());
 
     (jar.add(cookie), Redirect::to(&redirect_url).into_response())
 }
@@ -174,14 +160,8 @@ async fn health_check() -> &'static str {
 // ==========================================
 
 async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
-    let target_root = if state.base_path.is_empty() {
-        "/".to_string()
-    } else {
-        format!("{}/", state.base_path)
-    };
-
     if is_authenticated(&jar) {
-        return Redirect::to(&target_root).into_response();
+        return Redirect::to("/").into_response();
     }
 
     let i18n_arc = resolve_i18n(&jar, &state);
@@ -190,11 +170,6 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         ("pt-BR", "PT", "Mudar para Português")
     } else {
         ("en", "EN", "Switch to English")
-    };
-    let login_redirect = if state.base_path.is_empty() {
-        "/login".to_string()
-    } else {
-        format!("{}/login", state.base_path)
     };
 
     let has_admin = state.auth_service.has_admin().await;
@@ -239,7 +214,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                         <span class="text-[10px] text-slate-400 font-mono">Gateway</span>
                     </div>
                 </div>
-                <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+                <a href="/set-lang?lang={next_lang}&redirect=/login" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                     <span>{lang_btn_label}</span>
                 </a>
@@ -354,7 +329,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
         try {{
             const origin = window.location.origin;
-            const res = await fetch(`{base_path}/api/auth/qr_start?origin=${{encodeURIComponent(origin)}}`);
+            const res = await fetch(`/api/auth/qr_start?origin=${{encodeURIComponent(origin)}}`);
             if (!res.ok) throw new Error("Falha ao gerar QR Code");
             const data = await res.json();
             currentQrId = data.qr_id;
@@ -378,7 +353,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
         qrPollTimer = setInterval(async () => {{
             try {{
-                const res = await fetch(`{base_path}/api/auth/qr_poll?id=${{currentQrId}}`);
+                const res = await fetch(`/api/auth/qr_poll?id=${{currentQrId}}`);
                 if (!res.ok) return;
                 const data = await res.json();
                 const statusText = document.getElementById('qr-status-text');
@@ -389,7 +364,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                     statusDot.className = "w-2 h-2 rounded-full bg-emerald-400";
                     statusText.innerText = '{qr_approved}';
                     setTimeout(() => {{
-                        window.location.href = '{target_root}';
+                        window.location.href = '/';
                     }}, 400);
                 }} else if (data.status === 'scanned') {{
                     statusDot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-ping";
@@ -413,7 +388,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         btn.innerText = '{waiting_passkey}';
 
         try {{
-            const startRes = await fetch('{base_path}/api/auth/login_start');
+            const startRes = await fetch('/api/auth/login_start');
             if (!startRes.ok) {{
                 const err = await startRes.text();
                 throw new Error(err || '{start_error}');
@@ -431,7 +406,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             }}
             const credential = await webauthnJSON.get(opts);
 
-            const finishRes = await fetch('{base_path}/api/auth/login_finish', {{
+            const finishRes = await fetch('/api/auth/login_finish', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ auth_id: data.auth_id, credential }})
@@ -442,7 +417,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                 throw new Error(err || '{auth_error}');
             }}
 
-            window.location.href = '{target_root}';
+            window.location.href = '/';
         }} catch (err) {{
             console.error(err);
             errDiv.innerText = err.message || '{default_error}';
@@ -473,12 +448,9 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         qr_approved = i18n.login.qr_approved,
         qr_expired = i18n.login.qr_expired,
         qr_reload = i18n.login.qr_reload,
-        base_path = state.base_path,
-        target_root = target_root,
         next_lang = next_lang,
         lang_btn_label = lang_btn_label,
         lang_title = lang_title,
-        login_redirect = login_redirect,
     );
 
     Html(html).into_response()
@@ -531,12 +503,11 @@ async fn login_finish_handler(
     }
 }
 
-async fn logout_handler(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+async fn logout_handler(jar: SignedCookieJar, State(_state): State<AppState>) -> Response {
     let mut remove_cookie = Cookie::new(SESSION_COOKIE, "");
     remove_cookie.set_path("/");
     let jar = jar.remove(remove_cookie);
-    let target = format!("{}/login", state.base_path);
-    (jar, Redirect::to(&target)).into_response()
+    (jar, Redirect::to("/login")).into_response()
 }
 
 // ==========================================
@@ -592,11 +563,7 @@ async fn qr_start_handler(
         host_origin
     };
 
-    let qr_url = if state.base_path.is_empty() {
-        format!("{origin}/qr-login?token={qr_id}")
-    } else {
-        format!("{origin}{}/qr-login?token={qr_id}", state.base_path)
-    };
+    let qr_url = format!("{origin}/qr-login?token={qr_id}");
 
     let svg = match qrcode::QrCode::new(qr_url.as_bytes()) {
         Ok(code) => code
@@ -770,7 +737,7 @@ async fn qr_login_page(
         btn.innerText = '{waiting_passkey}';
 
         try {{
-            const startRes = await fetch(`{base_path}/api/auth/qr_mobile_start?token=${{encodeURIComponent(token)}}`);
+            const startRes = await fetch(`/api/auth/qr_mobile_start?token=${{encodeURIComponent(token)}}`);
             if (!startRes.ok) {{
                 const err = await startRes.text();
                 throw new Error(err || '{start_error}');
@@ -788,7 +755,7 @@ async fn qr_login_page(
             }}
             const credential = await webauthnJSON.get(opts);
 
-            const finishRes = await fetch('{base_path}/api/auth/qr_mobile_finish', {{
+            const finishRes = await fetch('/api/auth/qr_mobile_finish', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ token, auth_id: data.auth_id, credential }})
@@ -823,7 +790,6 @@ async fn qr_login_page(
         start_error = i18n.login.start_error,
         auth_error = i18n.login.auth_error,
         default_error = i18n.login.default_error,
-        base_path = state.base_path,
         token = token_str,
     );
 
@@ -967,7 +933,7 @@ async fn register_page(
         btn.innerText = '{creating_credential}';
 
         try {{
-            const startRes = await fetch(`{base_path}/api/auth/register_start?token=${{encodeURIComponent(token)}}`);
+            const startRes = await fetch(`/api/auth/register_start?token=${{encodeURIComponent(token)}}`);
             if (!startRes.ok) {{
                 const err = await startRes.text();
                 throw new Error(err || '{start_error}');
@@ -983,7 +949,7 @@ async fn register_page(
             }}
             const credential = await webauthnJSON.create(opts);
 
-            const finishRes = await fetch(`{base_path}/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
+            const finishRes = await fetch(`/api/auth/register_finish?token=${{encodeURIComponent(token)}}`, {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ reg_id: data.reg_id, credential }})
@@ -995,7 +961,7 @@ async fn register_page(
             }}
 
             alert('{success_alert}');
-            window.location.href = '{base_path}/login';
+            window.location.href = '/login';
         }} catch (err) {{
             console.error(err);
             errDiv.innerText = err.message || '{default_error}';
@@ -1019,7 +985,6 @@ async fn register_page(
         save_error = i18n.register.save_error,
         success_alert = i18n.register.success_alert,
         default_error = i18n.register.default_error,
-        base_path = state.base_path,
     );
 
     Html(html).into_response()
@@ -1087,7 +1052,6 @@ enum ActiveNav {
 }
 
 fn render_navbar(
-    base_path: &str,
     i18n: &crate::i18n::Translations,
     active: ActiveNav,
     current_path: &str,
@@ -1098,17 +1062,8 @@ fn render_navbar(
         ("en", "EN", "Switch to English")
     };
 
-    let home_url = if base_path.is_empty() {
-        "/".to_string()
-    } else {
-        format!("{}/", base_path)
-    };
-
-    let backups_url = if base_path.is_empty() {
-        "/backups".to_string()
-    } else {
-        format!("{}/backups", base_path)
-    };
+    let home_url = "/";
+    let backups_url = "/backups";
 
     let home_classes = if active == ActiveNav::Home {
         "bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-sm"
@@ -1122,11 +1077,7 @@ fn render_navbar(
         "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] border border-transparent"
     };
 
-    let lang_redirect = if base_path.is_empty() {
-        current_path.to_string()
-    } else {
-        format!("{}{}", base_path, current_path)
-    };
+    let lang_redirect = current_path;
 
     format!(
         r##"<header class="border-b border-rose-500/15 bg-canvas/90 backdrop-blur-md sticky top-0 z-50">
@@ -1162,12 +1113,12 @@ fn render_navbar(
                     <span class="hidden sm:inline">{active_monitoring}</span>
                 </span>
 
-                <a href="{base_path}/set-lang?lang={next_lang}&redirect={lang_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+                <a href="/set-lang?lang={next_lang}&redirect={lang_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                     <span>{lang_btn_label}</span>
                 </a>
 
-                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
+                <a href="/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                     <span>{logout}</span>
                 </a>
@@ -1183,7 +1134,6 @@ fn render_navbar(
         nav_home = i18n.dashboard.nav_home,
         nav_backups = i18n.dashboard.nav_backups,
         active_monitoring = i18n.common.active_monitoring,
-        base_path = base_path,
         next_lang = next_lang,
         lang_redirect = lang_redirect,
         lang_btn_label = lang_btn_label,
@@ -1194,13 +1144,12 @@ fn render_navbar(
 
 async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        let login_url = format!("{}/login", state.base_path);
-        return Redirect::to(&login_url).into_response();
+        return Redirect::to("/login").into_response();
     }
 
     let i18n_arc = resolve_i18n(&jar, &state);
     let i18n = &*i18n_arc;
-    let navbar = render_navbar(&state.base_path, i18n, ActiveNav::Home, "/");
+    let navbar = render_navbar(i18n, ActiveNav::Home, "/");
     let fragment = render_dashboard_fragment(&state, i18n, None).await;
     let head_tags = theme::render_head(
         &i18n.dashboard.page_title,
@@ -1216,7 +1165,7 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     {navbar}
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
-        <div id="dashboard-content" hx-get="{base_path}/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
+        <div id="dashboard-content" hx-get="/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
             {fragment}
         </div>
     </main>
@@ -1231,20 +1180,18 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
         navbar = navbar,
         fragment = fragment,
         footer = i18n.common.footer,
-        base_path = state.base_path,
     );
     Html(html).into_response()
 }
 
 async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
     if !is_authenticated(&jar) {
-        let login_url = format!("{}/login", state.base_path);
-        return Redirect::to(&login_url).into_response();
+        return Redirect::to("/login").into_response();
     }
 
     let i18n_arc = resolve_i18n(&jar, &state);
     let i18n = &*i18n_arc;
-    let navbar = render_navbar(&state.base_path, i18n, ActiveNav::Backups, "/backups");
+    let navbar = render_navbar(i18n, ActiveNav::Backups, "/backups");
     let head_tags = theme::render_head(
         &format!("{} - Komainu", i18n.dashboard.nav_backups),
         r#"<script src="https://unpkg.com/htmx.org@2.0.4"></script>"#,
@@ -1261,7 +1208,7 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
     {navbar}
 
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
-        <div id="backups-content" hx-get="{base_path}/api/backups/fragment" hx-trigger="backupCompleted from:body" hx-swap="innerHTML">
+        <div id="backups-content" hx-get="/api/backups/fragment" hx-trigger="backupCompleted from:body" hx-swap="innerHTML">
             {fragment}
         </div>
     </main>
@@ -1276,7 +1223,6 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
         navbar = navbar,
         fragment = fragment,
         footer = i18n.common.footer,
-        base_path = state.base_path,
     );
 
     Html(html).into_response()
@@ -1355,8 +1301,7 @@ async fn backup_fragment_handler(
     let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
         let mut headers = HeaderMap::new();
-        let login_url = format!("{}/login", state.base_path);
-        headers.insert("HX-Redirect", login_url.parse().unwrap());
+        headers.insert("HX-Redirect", "/login".parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
     }
 
@@ -1536,7 +1481,7 @@ async fn render_backups_fragment(
 
             <div>
                 <button 
-                    hx-post="{base_path}/api/backups/run" 
+                    hx-post="/api/backups/run" 
                     hx-target="#backups-content" 
                     hx-swap="innerHTML"
                     {run_btn_disabled}
@@ -1557,7 +1502,7 @@ async fn render_backups_fragment(
             <p class="text-xs text-slate-400 mt-0.5">{backups_subtitle}</p>
         </div>
 
-        <form hx-post="{base_path}/api/backups/config" hx-target="#backups-content" hx-swap="innerHTML" class="space-y-6">
+        <form hx-post="/api/backups/config" hx-target="#backups-content" hx-swap="innerHTML" class="space-y-6">
             <!-- Bloco 1: Cronjob -->
             <div class="space-y-3">
                 <div class="flex items-center gap-2.5">
@@ -1663,7 +1608,7 @@ async fn render_backups_fragment(
             <div>
                 <h3 class="text-lg font-display font-bold tracking-tight text-white">{history_section}</h3>
             </div>
-            <button hx-get="{base_path}/api/backups/fragment" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
+            <button hx-get="/api/backups/fragment" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
                 <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             </button>
         </div>
@@ -1692,7 +1637,6 @@ async fn render_backups_fragment(
         status_badge = status_badge,
         next_run_label = i18n.backups.next_run,
         next_run_val = next_run_str,
-        base_path = state.base_path,
         run_btn_disabled = run_btn_disabled,
         run_btn_text = run_btn_text,
         section_config = i18n.backups.section_config,
@@ -1740,8 +1684,7 @@ async fn dashboard_fragment_handler(jar: SignedCookieJar, State(state): State<Ap
     let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar) {
         let mut headers = HeaderMap::new();
-        let login_url = format!("{}/login", state.base_path);
-        headers.insert("HX-Redirect", login_url.parse().unwrap());
+        headers.insert("HX-Redirect", "/login".parse().unwrap());
         return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
     }
     Html(render_dashboard_fragment(&state, &i18n, None).await).into_response()
@@ -1917,7 +1860,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             
             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06] w-full sm:w-auto">
                 <button 
-                    hx-post="{base_path}/api/container/start" 
+                    hx-post="/api/container/start" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
@@ -1926,7 +1869,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     <span>{btn_start}</span>
                 </button>
                 <button 
-                    hx-post="{base_path}/api/container/stop" 
+                    hx-post="/api/container/stop" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
@@ -1935,7 +1878,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     <span>{btn_stop}</span>
                 </button>
                 <button 
-                    hx-post="{base_path}/api/container/restart" 
+                    hx-post="/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
@@ -1943,7 +1886,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     <span>{btn_restart}</span>
                 </button>
                 <button 
-                    hx-post="{base_path}/api/container/update" 
+                    hx-post="/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
@@ -1951,7 +1894,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     <span>{btn_update}</span>
                 </button>
                 <button 
-                    hx-post="{base_path}/api/container/rebuild" 
+                    hx-post="/api/container/rebuild" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
@@ -2057,7 +2000,6 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
         </div>
     </div>
 </div>"##,
-        base_path = &state.base_path,
         error_banner = error_banner,
         instance_title = i18n.dashboard.instance_title,
         status_badge = status_badge,
@@ -2270,7 +2212,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2290,21 +2231,6 @@ mod tests {
         assert!(fragment_err.contains("Falha na operação:"));
         assert!(fragment_err.contains("Falha ao iniciar"));
 
-        // Test base_path prefixing
-        let subpath_state = AppState {
-            container_service: container_service.clone(),
-            system_service: system_service.clone(),
-            auth_service: auth_service.clone(),
-            backup_service: create_test_backup_service(),
-            cookie_key: cookie_key.clone(),
-            i18n: i18n.clone(),
-            base_path: "/komainu".to_string(),
-            rp_origin: "http://localhost:3000".to_string(),
-        };
-        let subpath_fragment = render_dashboard_fragment(&subpath_state, &subpath_state.i18n, None).await;
-        assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/start\""));
-        assert!(subpath_fragment.contains("hx-post=\"/komainu/api/container/stop\""));
-
         // Test English fragment
         let en_state = AppState {
             container_service,
@@ -2313,7 +2239,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key,
             i18n: Arc::new(crate::i18n::I18n::load("en")),
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
         let en_fragment = render_dashboard_fragment(&en_state, &en_state.i18n, None).await;
@@ -2345,7 +2270,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2391,47 +2315,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_nested_base_path_routing() {
-        use axum::body::Body;
-        use axum::http::Request;
-        use tower::ServiceExt;
-
-        let container_service = Arc::new(ContainerService::new(Arc::new(MockContainerPort), "vaultwarden".to_string()));
-        let system_service = Arc::new(SystemService::new(Arc::new(MockSystemMonitor)));
-        let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
-        let cookie_key = derive_cookie_key("test_secret_key_12345678901234567890");
-        let i18n = Arc::new(crate::i18n::I18n::load("en"));
-        let state = AppState {
-            container_service,
-            system_service,
-            auth_service,
-            backup_service: create_test_backup_service(),
-            cookie_key,
-            i18n,
-            base_path: "/komainu".to_string(),
-            rp_origin: "http://localhost:3000".to_string(),
-        };
-
-        let router = create_router(state);
-
-        // 1. Nested path /komainu/health
-        let req_nested = Request::builder()
-            .uri("/komainu/health")
-            .body(Body::empty())
-            .unwrap();
-        let res_nested = router.clone().oneshot(req_nested).await.unwrap();
-        assert_eq!(res_nested.status(), StatusCode::OK);
-
-        // 2. Direct root path /health (when reverse proxy strips prefix)
-        let req_root = Request::builder()
-            .uri("/health")
-            .body(Body::empty())
-            .unwrap();
-        let res_root = router.oneshot(req_root).await.unwrap();
-        assert_eq!(res_root.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
     async fn test_qr_code_authentication_flow() {
         use axum::body::{to_bytes, Body};
         use axum::http::Request;
@@ -2449,7 +2332,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2547,7 +2429,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2596,7 +2477,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key,
             i18n,
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2636,7 +2516,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
@@ -2697,7 +2576,6 @@ mod tests {
             backup_service: create_test_backup_service(),
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
-            base_path: String::new(),
             rp_origin: "http://localhost:3000".to_string(),
         };
 
