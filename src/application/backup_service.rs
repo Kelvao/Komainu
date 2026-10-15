@@ -582,6 +582,8 @@ mod tests {
                 pcloud_region: PCloudRegion::EU,
                 pcloud_token: "pcl_token_test".to_string(),
                 pcloud_folder: "0".to_string(),
+                pcloud_client_id: String::new(),
+                pcloud_client_secret: String::new(),
             }),
             records: std::sync::Mutex::new(Vec::new()),
         });

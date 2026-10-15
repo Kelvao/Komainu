@@ -65,6 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cookie_key,
         i18n: i18n.clone(),
         rp_origin: config.rp_origin.clone(),
+        pcloud_client_id: config.pcloud_client_id.clone(),
+        pcloud_client_secret: config.pcloud_client_secret.clone(),
     };
 
     if args.register {

@@ -123,6 +123,8 @@ mod tests {
             pcloud_region: PCloudRegion::US,
             pcloud_token: "tok123".to_string(),
             pcloud_folder: "9876".to_string(),
+            pcloud_client_id: "client123".to_string(),
+            pcloud_client_secret: "secret123".to_string(),
         };
         store.save_config(&new_cfg).await.unwrap();
 

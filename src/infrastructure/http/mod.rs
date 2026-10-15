@@ -38,6 +38,8 @@ pub struct AppState {
     pub cookie_key: Key,
     pub i18n: Arc<crate::i18n::Translations>,
     pub rp_origin: String,
+    pub pcloud_client_id: String,
+    pub pcloud_client_secret: String,
 }
 
 impl FromRef<AppState> for Key {
@@ -75,6 +77,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/backups/config", post(backup_save_config_handler))
         .route("/api/backups/run", post(backup_run_now_handler))
         .route("/api/backups/fragment", get(backup_fragment_handler))
+        .route("/api/backups/pcloud/authorize", get(pcloud_oauth_authorize_handler))
+        .route("/api/backups/pcloud/callback", get(pcloud_oauth_callback_handler))
+        .route("/api/backups/pcloud/disconnect", post(pcloud_disconnect_handler))
         .route("/api/dashboard-fragment", get(dashboard_fragment_handler))
         .route("/api/container/start", post(container_start_handler))
         .route("/api/container/stop", post(container_stop_handler))
@@ -1192,7 +1197,17 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
     Html(html).into_response()
 }
 
-async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Response {
+#[derive(Deserialize, Default)]
+struct BackupsPageQuery {
+    pcloud_connected: Option<String>,
+    pcloud_error: Option<String>,
+}
+
+async fn backups_page(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<BackupsPageQuery>,
+) -> Response {
     if !is_authenticated(&jar) {
         return Redirect::to("/login").into_response();
     }
@@ -1204,7 +1219,22 @@ async fn backups_page(jar: SignedCookieJar, State(state): State<AppState>) -> Re
         &format!("{} - Komainu", i18n.dashboard.nav_backups),
         r#"<script src="https://unpkg.com/htmx.org@2.0.4"></script>"#,
     );
-    let fragment = render_backups_fragment(&state, i18n, None).await;
+
+    let banner_msg = if query.pcloud_connected.as_deref() == Some("1") {
+        Some((true, i18n.backups.pcloud_auth_success.clone()))
+    } else if let Some(err) = query.pcloud_error.as_deref() {
+        let msg = match err {
+            "missing_client_id" => "Client ID da aplicação pCloud não foi configurado.",
+            "missing_code" => "Código de autorização OAuth ausente.",
+            "missing_app_credentials" => "Client ID ou Client Secret ausentes para troca de token.",
+            _ => err,
+        };
+        Some((false, format!("{}: {msg}", i18n.backups.pcloud_auth_failed)))
+    } else {
+        None
+    };
+
+    let fragment = render_backups_fragment(&state, i18n, banner_msg).await;
 
     let html = format!(
         r##"<!DOCTYPE html>
@@ -1242,7 +1272,8 @@ struct BackupConfigForm {
     cron_expression: Option<String>,
     encryption_password: Option<String>,
     pcloud_region: Option<String>,
-    pcloud_token: Option<String>,
+    pcloud_client_id: Option<String>,
+    pcloud_client_secret: Option<String>,
     pcloud_folder: Option<String>,
 }
 
@@ -1270,12 +1301,19 @@ async fn backup_save_config_handler(
         Some("US") => crate::domain::backup::PCloudRegion::US,
         _ => crate::domain::backup::PCloudRegion::EU,
     };
-    let submitted_tok = form.pcloud_token.unwrap_or_default().trim().to_string();
-    let pcloud_token = if submitted_tok.is_empty() {
-        existing.pcloud_token
+    let submitted_cid = form.pcloud_client_id.unwrap_or_default().trim().to_string();
+    let pcloud_client_id = if submitted_cid.is_empty() {
+        existing.pcloud_client_id
     } else {
-        submitted_tok
+        submitted_cid
     };
+    let submitted_csec = form.pcloud_client_secret.unwrap_or_default().trim().to_string();
+    let pcloud_client_secret = if submitted_csec.is_empty() {
+        existing.pcloud_client_secret
+    } else {
+        submitted_csec
+    };
+    let pcloud_token = existing.pcloud_token;
     let pcloud_folder = form.pcloud_folder.unwrap_or_else(|| "0".to_string()).trim().to_string();
 
     let new_cfg = crate::domain::backup::BackupConfig {
@@ -1285,6 +1323,8 @@ async fn backup_save_config_handler(
         pcloud_region,
         pcloud_token,
         pcloud_folder,
+        pcloud_client_id,
+        pcloud_client_secret,
     };
 
     let result = state.backup_service.save_config(&new_cfg).await;
@@ -1293,6 +1333,186 @@ async fn backup_save_config_handler(
         Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
     };
 
+    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+}
+
+#[derive(Deserialize, Default)]
+struct PCloudAuthorizeQuery {
+    client_id: Option<String>,
+    client_secret: Option<String>,
+}
+
+async fn pcloud_oauth_authorize_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<PCloudAuthorizeQuery>,
+) -> Response {
+    if !is_authenticated(&jar) {
+        return Redirect::to("/login").into_response();
+    }
+
+    let mut cfg = state.backup_service.get_config().await.unwrap_or_default();
+
+    let mut changed = false;
+    if let Some(cid) = query.client_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        cfg.pcloud_client_id = cid;
+        changed = true;
+    }
+    if let Some(csec) = query.client_secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        cfg.pcloud_client_secret = csec;
+        changed = true;
+    }
+    if changed {
+        let _ = state.backup_service.save_config(&cfg).await;
+    }
+
+    let effective_client_id = if !cfg.pcloud_client_id.is_empty() {
+        &cfg.pcloud_client_id
+    } else {
+        &state.pcloud_client_id
+    };
+
+    if effective_client_id.is_empty() {
+        return Redirect::to("/backups?pcloud_error=missing_client_id").into_response();
+    }
+
+    let redirect_uri = format!("{}/api/backups/pcloud/callback", state.rp_origin.trim_end_matches('/'));
+    let state_token = Uuid::new_v4().to_string();
+
+    let auth_url = format!(
+        "https://my.pcloud.com/oauth2/authorize?client_id={}&response_type=code&redirect_uri={}&state={}",
+        crate::infrastructure::pcloud::urlencoding(effective_client_id),
+        crate::infrastructure::pcloud::urlencoding(&redirect_uri),
+        crate::infrastructure::pcloud::urlencoding(&state_token),
+    );
+
+    Redirect::to(&auth_url).into_response()
+}
+
+#[derive(Deserialize, Default)]
+struct PCloudCallbackQuery {
+    code: Option<String>,
+    hostname: Option<String>,
+    locationid: Option<u32>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+async fn pcloud_oauth_callback_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<PCloudCallbackQuery>,
+) -> Response {
+    if !is_authenticated(&jar) {
+        return Redirect::to("/login").into_response();
+    }
+
+    if let Some(err) = query.error.or(query.error_description) {
+        return Redirect::to(&format!(
+            "/backups?pcloud_error={}",
+            crate::infrastructure::pcloud::urlencoding(&err)
+        ))
+        .into_response();
+    }
+
+    let code = match query.code {
+        Some(c) if !c.is_empty() => c,
+        _ => return Redirect::to("/backups?pcloud_error=missing_code").into_response(),
+    };
+
+    let mut cfg = state.backup_service.get_config().await.unwrap_or_default();
+    let client_id = if !cfg.pcloud_client_id.is_empty() {
+        cfg.pcloud_client_id.clone()
+    } else {
+        state.pcloud_client_id.clone()
+    };
+    let client_secret = if !cfg.pcloud_client_secret.is_empty() {
+        cfg.pcloud_client_secret.clone()
+    } else {
+        state.pcloud_client_secret.clone()
+    };
+
+    if client_id.is_empty() || client_secret.is_empty() {
+        return Redirect::to("/backups?pcloud_error=missing_app_credentials").into_response();
+    }
+
+    let hostname = if let Some(h) = query.hostname.filter(|h| !h.is_empty()) {
+        h
+    } else if query.locationid == Some(2) {
+        "eapi.pcloud.com".to_string()
+    } else {
+        "api.pcloud.com".to_string()
+    };
+
+    let region = if hostname.contains("eapi") || query.locationid == Some(2) {
+        crate::domain::backup::PCloudRegion::EU
+    } else {
+        crate::domain::backup::PCloudRegion::US
+    };
+
+    let token_endpoint = format!("https://{hostname}/oauth2_token");
+    let http_client = reqwest::Client::new();
+    let res = http_client
+        .post(&token_endpoint)
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("code", code.as_str()),
+        ])
+        .send()
+        .await;
+
+    match res {
+        Ok(response) => {
+            #[derive(Deserialize)]
+            struct TokenResponse {
+                result: Option<i32>,
+                access_token: Option<String>,
+                error: Option<String>,
+            }
+
+            if let Ok(json) = response.json::<TokenResponse>().await {
+                if let (Some(0), Some(access_token)) = (json.result, json.access_token) {
+                    cfg.pcloud_token = access_token;
+                    cfg.pcloud_region = region;
+                    let _ = state.backup_service.save_config(&cfg).await;
+                    Redirect::to("/backups?pcloud_connected=1").into_response()
+                } else {
+                    let err = json.error.unwrap_or_else(|| format!("result {:?}", json.result));
+                    Redirect::to(&format!(
+                        "/backups?pcloud_error={}",
+                        crate::infrastructure::pcloud::urlencoding(&err)
+                    ))
+                    .into_response()
+                }
+            } else {
+                Redirect::to("/backups?pcloud_error=invalid_token_response").into_response()
+            }
+        }
+        Err(e) => {
+            Redirect::to(&format!(
+                "/backups?pcloud_error={}",
+                crate::infrastructure::pcloud::urlencoding(&e.to_string())
+            ))
+            .into_response()
+        }
+    }
+}
+
+async fn pcloud_disconnect_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
+    if !is_authenticated(&jar) {
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
+    }
+
+    let mut cfg = state.backup_service.get_config().await.unwrap_or_default();
+    cfg.pcloud_token = String::new();
+    let _ = state.backup_service.save_config(&cfg).await;
+
+    let msg = Some((true, i18n.backups.pcloud_disconnected_success.clone()));
     Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
 }
 
@@ -1485,10 +1705,69 @@ async fn render_backups_fragment(
         "••••••••••••"
     };
 
-    let pcloud_token_ph = if config.pcloud_token.is_empty() {
-        i18n.backups.pcloud_token_placeholder.as_str()
+    let client_id_val = if !config.pcloud_client_id.is_empty() {
+        &config.pcloud_client_id
+    } else {
+        &state.pcloud_client_id
+    };
+
+    let client_secret_ph = if config.pcloud_client_secret.is_empty() && state.pcloud_client_secret.is_empty() {
+        i18n.backups.pcloud_client_secret_placeholder.as_str()
     } else {
         "••••••••••••"
+    };
+
+    let callback_url = format!("{}/api/backups/pcloud/callback", state.rp_origin.trim_end_matches('/'));
+
+    let is_pcloud_connected = !config.pcloud_token.is_empty();
+    let pcloud_status_card = if is_pcloud_connected {
+        let region_str = match config.pcloud_region {
+            crate::domain::backup::PCloudRegion::EU => "EU",
+            crate::domain::backup::PCloudRegion::US => "US",
+        };
+        format!(
+            r##"<div class="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <div>
+                        <p class="text-xs font-mono font-semibold text-emerald-300">{} ({})</p>
+                        <p class="text-[11px] text-slate-400 font-sans">Token OAuth ativo e pronto para backups.</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="startPCloudOAuth()" class="px-3 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-xs font-mono text-slate-200 border border-white/[0.08] transition-colors flex items-center gap-1.5">
+                        <span>🔄</span> <span>{}</span>
+                    </button>
+                    <button type="button" hx-post="/api/backups/pcloud/disconnect" hx-target="#backups-content" hx-swap="innerHTML" class="px-3 py-1.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-xs font-mono text-rose-300 border border-rose-500/20 transition-colors flex items-center gap-1.5">
+                        <span>✕</span> <span>{}</span>
+                    </button>
+                </div>
+            </div>"##,
+            i18n.backups.pcloud_connected,
+            region_str,
+            i18n.backups.pcloud_reconnect_btn,
+            i18n.backups.pcloud_disconnect_btn
+        )
+    } else {
+        format!(
+            r##"<div class="p-3.5 rounded-lg bg-white/[0.02] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                    <div>
+                        <p class="text-xs font-mono font-semibold text-slate-300">{}</p>
+                        <p class="text-[11px] text-slate-400 font-sans">Faça login com seu app pCloud para vincular o acesso aos backups.</p>
+                    </div>
+                </div>
+                <div>
+                    <button type="button" onclick="startPCloudOAuth()" class="w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-semibold font-sans bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white shadow-md flex items-center justify-center gap-2 transition-all">
+                        <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                        <span>{}</span>
+                    </button>
+                </div>
+            </div>"##,
+            i18n.backups.pcloud_not_connected,
+            i18n.backups.pcloud_oauth_btn
+        )
     };
 
     format!(
@@ -1573,11 +1852,28 @@ async fn render_backups_fragment(
                 </div>
             </div>
 
-            <!-- Bloco 3: pCloud API -->
+            <!-- Bloco 3: pCloud API & OAuth -->
             <div class="pt-4 border-t border-white/[0.06] space-y-4">
                 <div class="flex items-center gap-2">
                     <span class="w-1.5 h-1.5 bg-rose-500 rounded-sm"></span>
                     <h4 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">{pcloud_section}</h4>
+                </div>
+
+                {pcloud_status_card}
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="pcloud-cid" class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_client_id_label}</label>
+                        <input type="text" id="pcloud-cid" name="pcloud_client_id" value="{pcloud_client_id_val}" placeholder="{pcloud_client_id_ph}" class="w-full px-3 py-2 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                    </div>
+
+                    <div>
+                        <label for="pcloud-csec" class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_client_secret_label}</label>
+                        <div class="relative w-full">
+                            <input type="password" id="pcloud-csec" name="pcloud_client_secret" value="" placeholder="{pcloud_client_secret_ph}" autocomplete="off" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
+                            <button type="button" onclick="const f=document.getElementById('pcloud-csec');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1587,6 +1883,7 @@ async fn render_backups_fragment(
                             <option value="EU" {region_eu_selected}>{pcloud_region_eu}</option>
                             <option value="US" {region_us_selected}>{pcloud_region_us}</option>
                         </select>
+                        <p class="text-[11px] text-slate-500 font-sans mt-1">Detectado automaticamente durante o login OAuth.</p>
                     </div>
 
                     <div>
@@ -1595,12 +1892,13 @@ async fn render_backups_fragment(
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-mono text-slate-400 mb-1.5">{pcloud_token_label}</label>
-                    <div class="relative w-full sm:max-w-md">
-                        <input type="password" id="pcloud-tok" name="pcloud_token" value="" placeholder="{pcloud_token_ph}" autocomplete="off" class="w-full px-3 py-2 pr-10 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-100 text-xs font-mono">
-                        <button type="button" onclick="const f=document.getElementById('pcloud-tok');f.type=f.type==='password'?'text':'password';" class="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono" title="Toggle visibility">👁️</button>
+                <div class="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] text-xs font-mono">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <span class="text-slate-400">{pcloud_callback_url_label}:</span>
+                        <button type="button" onclick="navigator.clipboard.writeText('{callback_url}');this.innerText='Copiado!';" class="px-2 py-0.5 rounded bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 border border-white/[0.08] text-[11px] transition-colors">Copiar</button>
                     </div>
+                    <div class="text-rose-300 font-semibold break-all select-all">{callback_url}</div>
+                    <p class="text-[11px] text-slate-500 font-sans mt-1.5">{pcloud_callback_hint}</p>
                 </div>
             </div>
 
@@ -1662,6 +1960,20 @@ async fn render_backups_fragment(
             </table>
         </div>
     </div>
+
+    <script>
+    function startPCloudOAuth() {{
+        const cidEl = document.getElementById('pcloud-cid');
+        const csecEl = document.getElementById('pcloud-csec');
+        const cid = cidEl ? cidEl.value.trim() : '';
+        const csec = csecEl ? csecEl.value.trim() : '';
+        const params = new URLSearchParams();
+        if (cid) params.set('client_id', cid);
+        if (csec) params.set('client_secret', csec);
+        const qs = params.toString();
+        window.location.href = qs ? '/api/backups/pcloud/authorize?' + qs : '/api/backups/pcloud/authorize';
+    }}
+    </script>
 </div>"##,
         alert_banner = alert_banner,
         backups_title = i18n.dashboard.backups_title,
@@ -1684,6 +1996,12 @@ async fn render_backups_fragment(
         encryption_password_label = i18n.backups.encryption_password_label,
         enc_pass_ph = enc_pass_ph,
         pcloud_section = i18n.backups.pcloud_section,
+        pcloud_status_card = pcloud_status_card,
+        pcloud_client_id_label = i18n.backups.pcloud_client_id_label,
+        pcloud_client_id_val = client_id_val,
+        pcloud_client_id_ph = i18n.backups.pcloud_client_id_placeholder,
+        pcloud_client_secret_label = i18n.backups.pcloud_client_secret_label,
+        pcloud_client_secret_ph = client_secret_ph,
         pcloud_region_label = i18n.backups.pcloud_region_label,
         pcloud_region_eu = i18n.backups.pcloud_region_eu,
         pcloud_region_us = i18n.backups.pcloud_region_us,
@@ -1692,8 +2010,9 @@ async fn render_backups_fragment(
         pcloud_folder_label = i18n.backups.pcloud_folder_label,
         pcloud_folder_val = config.pcloud_folder,
         pcloud_folder_ph = i18n.backups.pcloud_folder_placeholder,
-        pcloud_token_label = i18n.backups.pcloud_token_label,
-        pcloud_token_ph = pcloud_token_ph,
+        pcloud_callback_url_label = i18n.backups.pcloud_callback_url_label,
+        pcloud_callback_hint = i18n.backups.pcloud_callback_hint,
+        callback_url = callback_url,
         local_paths_section = i18n.backups.local_paths_section,
         data_path_label = i18n.backups.data_path_label,
         data_path_badge = data_path_badge,
@@ -2243,6 +2562,8 @@ mod tests {
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let fragment = render_dashboard_fragment(&state, &state.i18n, None).await;
@@ -2270,6 +2591,8 @@ mod tests {
             cookie_key,
             i18n: Arc::new(crate::i18n::I18n::load("en")),
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
         let en_fragment = render_dashboard_fragment(&en_state, &en_state.i18n, None).await;
         assert!(en_fragment.contains("Vaultwarden Instance"));
@@ -2301,6 +2624,8 @@ mod tests {
             cookie_key,
             i18n,
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state);
@@ -2363,6 +2688,8 @@ mod tests {
             cookie_key,
             i18n,
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state);
@@ -2460,6 +2787,8 @@ mod tests {
             cookie_key,
             i18n,
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state);
@@ -2508,6 +2837,8 @@ mod tests {
             cookie_key,
             i18n,
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state);
@@ -2547,6 +2878,8 @@ mod tests {
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state);
@@ -2607,9 +2940,16 @@ mod tests {
             cookie_key: cookie_key.clone(),
             i18n: i18n.clone(),
             rp_origin: "http://localhost:3000".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         };
 
         let router = create_router(state.clone());
+
+        // Preset an initial pCloud token to simulate existing connected account
+        let mut initial_cfg = state.backup_service.get_config().await.unwrap_or_default();
+        initial_cfg.pcloud_token = "test_tok".to_string();
+        state.backup_service.save_config(&initial_cfg).await.unwrap();
 
         // 1. Unauthenticated POST /api/backups/config -> 401
         let req_unauth = Request::builder()
@@ -2639,7 +2979,7 @@ mod tests {
             .method("POST")
             .header("cookie", cookie_str)
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(Body::from("enabled=on&cron_expression=0+4+*+*+*&pcloud_region=EU&pcloud_token=test_tok&pcloud_folder=12345&encryption_password=strong_password"))
+            .body(Body::from("enabled=on&cron_expression=0+4+*+*+*&pcloud_region=EU&pcloud_client_id=test_cid&pcloud_client_secret=test_sec&pcloud_folder=12345&encryption_password=strong_password"))
             .unwrap();
         let res_save = router.clone().oneshot(req_save).await.unwrap();
         assert_eq!(res_save.status(), StatusCode::OK);
@@ -2654,12 +2994,14 @@ mod tests {
             .method("POST")
             .header("cookie", cookie_str)
             .header("content-type", "application/x-www-form-urlencoded")
-            .body(Body::from("enabled=on&cron_expression=0+5+*+*+*&pcloud_region=EU&pcloud_token=&pcloud_folder=12345&encryption_password="))
+            .body(Body::from("enabled=on&cron_expression=0+5+*+*+*&pcloud_region=EU&pcloud_client_id=&pcloud_client_secret=&pcloud_folder=12345&encryption_password="))
             .unwrap();
         let res_save_blank = router.clone().oneshot(req_save_blank).await.unwrap();
         assert_eq!(res_save_blank.status(), StatusCode::OK);
         let saved_cfg = state.backup_service.get_config().await.unwrap();
         assert_eq!(saved_cfg.encryption_password, "strong_password");
+        assert_eq!(saved_cfg.pcloud_client_id, "test_cid");
+        assert_eq!(saved_cfg.pcloud_client_secret, "test_sec");
         assert_eq!(saved_cfg.pcloud_token, "test_tok");
         assert_eq!(saved_cfg.cron_expression, "0 5 * * *");
 
@@ -2669,13 +3011,42 @@ mod tests {
             .header("cookie", cookie_str)
             .body(Body::empty())
             .unwrap();
-        let res_frag = router.oneshot(req_frag).await.unwrap();
+        let res_frag = router.clone().oneshot(req_frag).await.unwrap();
         assert_eq!(res_frag.status(), StatusCode::OK);
         let frag_bytes = to_bytes(res_frag.into_body(), usize::MAX).await.unwrap();
         let frag_body = String::from_utf8(frag_bytes.to_vec()).unwrap();
         assert!(frag_body.contains("Cópias de Segurança (Backups)"));
         assert!(!frag_body.contains("strong_password"));
+        assert!(!frag_body.contains("test_sec"));
         assert!(!frag_body.contains("test_tok"));
         assert!(frag_body.contains("••••••••••••"));
+        assert!(frag_body.contains("Conectado"));
+
+        // 5. Test OAuth authorize redirect
+        let req_auth_oauth = Request::builder()
+            .uri("/api/backups/pcloud/authorize")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_auth_oauth = router.clone().oneshot(req_auth_oauth).await.unwrap();
+        assert_eq!(res_auth_oauth.status(), StatusCode::SEE_OTHER);
+        let loc = res_auth_oauth.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc.starts_with("https://my.pcloud.com/oauth2/authorize?client_id=test_cid"));
+        assert!(loc.contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fbackups%2Fpcloud%2Fcallback"));
+
+        // 6. Test OAuth disconnect
+        let req_disc = Request::builder()
+            .uri("/api/backups/pcloud/disconnect")
+            .method("POST")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_disc = router.oneshot(req_disc).await.unwrap();
+        assert_eq!(res_disc.status(), StatusCode::OK);
+        let disc_bytes = to_bytes(res_disc.into_body(), usize::MAX).await.unwrap();
+        let disc_body = String::from_utf8(disc_bytes.to_vec()).unwrap();
+        assert!(disc_body.contains(&state.i18n.backups.pcloud_not_connected));
+        let updated_cfg = state.backup_service.get_config().await.unwrap();
+        assert_eq!(updated_cfg.pcloud_token, "");
     }
 }

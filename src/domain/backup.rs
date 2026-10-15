@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PCloudRegion {
     US,
+    #[default]
     EU,
 }
 
@@ -20,12 +21,6 @@ impl PCloudRegion {
     }
 }
 
-impl Default for PCloudRegion {
-    fn default() -> Self {
-        Self::EU
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackupConfig {
     pub enabled: bool,
@@ -34,6 +29,10 @@ pub struct BackupConfig {
     pub pcloud_region: PCloudRegion,
     pub pcloud_token: String,
     pub pcloud_folder: String,
+    #[serde(default)]
+    pub pcloud_client_id: String,
+    #[serde(default)]
+    pub pcloud_client_secret: String,
 }
 
 impl Default for BackupConfig {
@@ -45,6 +44,8 @@ impl Default for BackupConfig {
             pcloud_region: PCloudRegion::EU,
             pcloud_token: String::new(),
             pcloud_folder: "0".to_string(),
+            pcloud_client_id: String::new(),
+            pcloud_client_secret: String::new(),
         }
     }
 }

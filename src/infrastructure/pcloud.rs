@@ -55,7 +55,7 @@ impl PCloudClientPort for HttpPCloudClient {
             } else if folder.chars().all(|c| c.is_ascii_digit()) {
                 format!("folderid={}", folder)
             } else {
-                format!("path={}", urlencoding(&folder))
+                format!("path={}", urlencoding_path(&folder))
             };
 
             let url = format!(
@@ -111,10 +111,22 @@ impl PCloudClientPort for HttpPCloudClient {
     }
 }
 
-fn urlencoding(val: &str) -> String {
+pub(crate) fn urlencoding_path(val: &str) -> String {
     let mut out = String::new();
     for b in val.bytes() {
         if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' || b == b'/' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+pub(crate) fn urlencoding(val: &str) -> String {
+    let mut out = String::new();
+    for b in val.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
             out.push(b as char);
         } else {
             out.push_str(&format!("%{:02X}", b));
@@ -129,7 +141,8 @@ mod tests {
 
     #[test]
     fn test_urlencoding() {
-        assert_eq!(urlencoding("/Vaultwarden/Backups"), "/Vaultwarden/Backups");
+        assert_eq!(urlencoding_path("/Vaultwarden/Backups"), "/Vaultwarden/Backups");
+        assert_eq!(urlencoding("http://localhost:3000/callback"), "http%3A%2F%2Flocalhost%3A3000%2Fcallback");
         assert_eq!(urlencoding("My Backups"), "My%20Backups");
     }
 

@@ -13,6 +13,8 @@ pub struct Config {
     pub app_lang: String,
     pub vw_data_path: String,
     pub backup_config_path: String,
+    pub pcloud_client_id: String,
+    pub pcloud_client_secret: String,
 }
 
 pub(crate) fn clean_env_value(val: &str) -> String {
@@ -89,6 +91,12 @@ impl Config {
         let backup_config_path_raw = env::var("BACKUP_CONFIG_PATH").unwrap_or_else(|_| "backup_config.json".to_string());
         let backup_config_path = clean_env_value(&backup_config_path_raw);
 
+        let pcloud_client_id_raw = env::var("PCLOUD_CLIENT_ID").unwrap_or_default();
+        let pcloud_client_id = clean_env_value(&pcloud_client_id_raw);
+
+        let pcloud_client_secret_raw = env::var("PCLOUD_CLIENT_SECRET").unwrap_or_default();
+        let pcloud_client_secret = clean_env_value(&pcloud_client_secret_raw);
+
         Ok(Self {
             server_host,
             server_port,
@@ -101,6 +109,8 @@ impl Config {
             app_lang,
             vw_data_path,
             backup_config_path,
+            pcloud_client_id,
+            pcloud_client_secret,
         })
     }
 }

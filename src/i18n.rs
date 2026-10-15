@@ -246,6 +246,34 @@ pub struct BackupsTranslations {
     pub pcloud_folder_label: String,
     #[serde(default = "default_b_pcloud_fld_ph")]
     pub pcloud_folder_placeholder: String,
+    #[serde(default = "default_b_pcloud_oauth_btn")]
+    pub pcloud_oauth_btn: String,
+    #[serde(default = "default_b_pcloud_reconnect_btn")]
+    pub pcloud_reconnect_btn: String,
+    #[serde(default = "default_b_pcloud_disconnect_btn")]
+    pub pcloud_disconnect_btn: String,
+    #[serde(default = "default_b_pcloud_conn")]
+    pub pcloud_connected: String,
+    #[serde(default = "default_b_pcloud_not_conn")]
+    pub pcloud_not_connected: String,
+    #[serde(default = "default_b_pcloud_cid_lbl")]
+    pub pcloud_client_id_label: String,
+    #[serde(default = "default_b_pcloud_cid_ph")]
+    pub pcloud_client_id_placeholder: String,
+    #[serde(default = "default_b_pcloud_csec_lbl")]
+    pub pcloud_client_secret_label: String,
+    #[serde(default = "default_b_pcloud_csec_ph")]
+    pub pcloud_client_secret_placeholder: String,
+    #[serde(default = "default_b_pcloud_cb_url")]
+    pub pcloud_callback_url_label: String,
+    #[serde(default = "default_b_pcloud_cb_hint")]
+    pub pcloud_callback_hint: String,
+    #[serde(default = "default_b_pcloud_auth_succ")]
+    pub pcloud_auth_success: String,
+    #[serde(default = "default_b_pcloud_auth_fail")]
+    pub pcloud_auth_failed: String,
+    #[serde(default = "default_b_pcloud_disc_succ")]
+    pub pcloud_disconnected_success: String,
     #[serde(default = "default_b_loc_sec")]
     pub local_paths_section: String,
     #[serde(default = "default_b_data_lbl")]
@@ -309,6 +337,20 @@ fn default_b_pcloud_tok() -> String { "Access Token OAuth do pCloud".to_string()
 fn default_b_pcloud_tok_ph() -> String { "Cole seu token de acesso da API do pCloud".to_string() }
 fn default_b_pcloud_fld() -> String { "Pasta de Destino no pCloud (ID ou Caminho)".to_string() }
 fn default_b_pcloud_fld_ph() -> String { "0 (raiz) ou /Backups/Vaultwarden".to_string() }
+fn default_b_pcloud_oauth_btn() -> String { "Conectar com pCloud (OAuth)".to_string() }
+fn default_b_pcloud_reconnect_btn() -> String { "Reconectar com pCloud".to_string() }
+fn default_b_pcloud_disconnect_btn() -> String { "Desconectar".to_string() }
+fn default_b_pcloud_conn() -> String { "Conectado ao pCloud".to_string() }
+fn default_b_pcloud_not_conn() -> String { "Não conectado ao pCloud".to_string() }
+fn default_b_pcloud_cid_lbl() -> String { "Client ID da Aplicação (App Key)".to_string() }
+fn default_b_pcloud_cid_ph() -> String { "Insira o Client ID do seu app no pCloud".to_string() }
+fn default_b_pcloud_csec_lbl() -> String { "Client Secret da Aplicação (App Secret)".to_string() }
+fn default_b_pcloud_csec_ph() -> String { "Insira o Client Secret do seu app".to_string() }
+fn default_b_pcloud_cb_url() -> String { "URL de Redirecionamento (Callback URI)".to_string() }
+fn default_b_pcloud_cb_hint() -> String { "Cadastre exatamente esta URL no painel de desenvolvedor do seu app no pCloud (Redirect URI)".to_string() }
+fn default_b_pcloud_auth_succ() -> String { "Autenticação com o pCloud realizada com sucesso!".to_string() }
+fn default_b_pcloud_auth_fail() -> String { "Falha na autenticação OAuth com o pCloud".to_string() }
+fn default_b_pcloud_disc_succ() -> String { "Conta do pCloud desconectada com sucesso.".to_string() }
 fn default_b_loc_sec() -> String { "Diagnóstico de Arquivos e Pastas Locais (.env)".to_string() }
 fn default_b_data_lbl() -> String { "Diretório de dados (/data):".to_string() }
 fn default_b_env_lbl() -> String { "Arquivo de ambiente (vaultwarden.env):".to_string() }

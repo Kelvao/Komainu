@@ -131,6 +131,8 @@ cp .env.example .env
 | `APP_LANG` | `en` | Interface & CLI language (`en`, `pt-BR`). |
 | `VW_DATA_PATH` | `vw-data` | Host path to the Vaultwarden data directory (contains database, attachments, keys). |
 | `BACKUP_CONFIG_PATH` | `backup_config.json` | Path where backup settings, cron configuration, and history are stored. |
+| `PCLOUD_CLIENT_ID` | `""` | Optional default pCloud OAuth Application Client ID (App Key). |
+| `PCLOUD_CLIENT_SECRET` | `""` | Optional default pCloud OAuth Application Client Secret (App Secret). |
 
 ### `.env.example`
 
@@ -146,6 +148,8 @@ CREDENTIALS_PATH=credentials.json
 APP_LANG=en # Options: en, pt-BR
 VW_DATA_PATH=vw-data # Path to Vaultwarden data volume on host
 BACKUP_CONFIG_PATH=backup_config.json # Path to store backup configuration and history
+PCLOUD_CLIENT_ID= # Optional default pCloud App Key
+PCLOUD_CLIENT_SECRET= # Optional default pCloud App Secret
 ```
 
 > [!IMPORTANT]
