@@ -585,10 +585,10 @@ async fn test_backup_api_endpoints() {
     assert_eq!(res_stale.status(), StatusCode::UNAUTHORIZED);
 
     // 2. Authenticated POST /api/backups/config -> 200 with success banner
-    let jar = SignedCookieJar::new(cookie_key);
+    let jar = SignedCookieJar::new(cookie_key.clone());
     let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:test_tag"));
     cookie.set_path("/");
-    let jar = jar.add(cookie);
+    let jar = jar.add(cookie.clone());
     let cookie_res = (jar, StatusCode::OK).into_response();
     let set_cookie = cookie_res.headers().get("set-cookie").unwrap().to_str().unwrap();
     let cookie_str = set_cookie.split(';').next().unwrap();
@@ -727,6 +727,30 @@ async fn test_backup_api_endpoints() {
     assert_eq!(res_cb_csrf.status(), StatusCode::SEE_OTHER);
     let loc_csrf = res_cb_csrf.headers().get("location").unwrap().to_str().unwrap();
     assert!(loc_csrf.contains("pcloud_error=invalid_oauth_state"));
+
+    // SSRF: callback with untrusted hostname
+    let mut cb_cookie = Cookie::new(PCLOUD_OAUTH_COOKIE, "valid_state".to_string());
+    cb_cookie.set_path("/");
+    let jar_cb = SignedCookieJar::new(cookie_key.clone()).add(cookie.clone()).add(cb_cookie);
+    let cookie_cb_res = (jar_cb, StatusCode::OK).into_response();
+    let cookie_cb_str: String = cookie_cb_res
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|h| h.to_str().ok().and_then(|s| s.split(';').next()))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    let req_cb_ssrf = Request::builder()
+        .uri("/api/backups/pcloud/callback?code=good_code&state=valid_state&hostname=attacker.com")
+        .header("cookie", cookie_cb_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_cb_ssrf = router.clone().oneshot(req_cb_ssrf).await.unwrap();
+    assert_eq!(res_cb_ssrf.status(), StatusCode::SEE_OTHER);
+    let loc_ssrf = res_cb_ssrf.headers().get("location").unwrap().to_str().unwrap();
+    assert!(loc_ssrf.contains("pcloud_error=untrusted_callback_host"));
+
 
     // 9. Test unauthenticated GET /api/backups/download -> 401
     let req_dl_unauth = Request::builder()

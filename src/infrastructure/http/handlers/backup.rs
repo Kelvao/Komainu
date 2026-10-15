@@ -35,6 +35,7 @@ pub async fn backups_page(
             "missing_code" => "Código de autorização OAuth ausente.",
             "missing_app_credentials" => "Client ID ou Client Secret ausentes para troca de token.",
             "invalid_oauth_state" => "Estado da requisição OAuth inválido ou expirado (possível CSRF).",
+            "untrusted_callback_host" => "Hostname de callback OAuth pCloud inválido ou não confiável.",
             _ => err,
         };
         Some((false, format!("{}: {msg}", i18n.backups.pcloud_auth_failed)))
@@ -258,8 +259,13 @@ pub async fn pcloud_oauth_callback_handler(
         return (jar, Redirect::to("/backups?pcloud_error=missing_app_credentials")).into_response();
     }
 
-    let hostname = if let Some(h) = query.hostname.filter(|h| !h.is_empty()) {
-        h
+    let hostname = if let Some(h) = query.hostname.as_deref().filter(|h| !h.is_empty()) {
+        if h == "api.pcloud.com" || h == "eapi.pcloud.com" {
+            h.to_string()
+        } else {
+            tracing::warn!("Untrusted pCloud callback hostname rejected: {h}");
+            return (jar, Redirect::to("/backups?pcloud_error=untrusted_callback_host")).into_response();
+        }
     } else if query.locationid == Some(1) {
         "api.pcloud.com".to_string()
     } else {
