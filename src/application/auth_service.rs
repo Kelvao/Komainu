@@ -47,6 +47,7 @@ pub struct QrAuthState {
     pub created_at: Instant,
     pub status: QrAuthStatus,
     pub session_admin_ts: Option<u64>,
+    pub bind_secret: Option<String>,
 }
 
 pub struct AuthService {
@@ -209,7 +210,7 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn create_qr_session(&self) -> Uuid {
+    pub async fn create_qr_session(&self, bind_secret: Option<String>) -> Uuid {
         let qr_id = Uuid::new_v4();
         let mut states = self.qr_states.lock().await;
         prune_expired_qr(&mut states);
@@ -217,6 +218,7 @@ impl AuthService {
             created_at: Instant::now(),
             status: QrAuthStatus::Pending,
             session_admin_ts: None,
+            bind_secret,
         });
         qr_id
     }
@@ -257,10 +259,14 @@ impl AuthService {
         false
     }
 
-    pub async fn consume_approved_qr_session(&self, qr_id: Uuid) -> Option<u64> {
+    pub async fn consume_approved_qr_session(&self, qr_id: Uuid, provided_secret: Option<&str>) -> Option<u64> {
         let mut states = self.qr_states.lock().await;
         if let Some(state) = states.get(&qr_id)
             && state.status == QrAuthStatus::Approved {
+                if let Some(ref required_secret) = state.bind_secret
+                    && provided_secret != Some(required_secret.as_str()) {
+                        return None;
+                    }
                 let ts = state.session_admin_ts;
                 states.remove(&qr_id);
                 return ts;
@@ -312,6 +318,7 @@ mod tests {
             created_at: now - std::time::Duration::from_secs(20),
             status: QrAuthStatus::Pending,
             session_admin_ts: None,
+            bind_secret: None,
         });
 
         for _ in 1..MAX_PENDING_STATES {
@@ -319,6 +326,7 @@ mod tests {
                 created_at: now,
                 status: QrAuthStatus::Pending,
                 session_admin_ts: None,
+                bind_secret: None,
             });
         }
 

@@ -59,14 +59,13 @@ pub async fn rate_limit_middleware(
 }
 
 fn extract_client_ip(req: &Request) -> String {
-    if let Some(forwarded) = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(first) = forwarded.split(',').next() {
+    if let Some(forwarded) = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok())
+        && let Some(first) = forwarded.split(',').next() {
             let trimmed = first.trim();
             if !trimmed.is_empty() {
                 return trimmed.to_string();
             }
         }
-    }
     if let Some(real_ip) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
         let trimmed = real_ip.trim();
         if !trimmed.is_empty() {

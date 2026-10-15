@@ -24,7 +24,7 @@ fn encode_hex(bytes: &[u8]) -> String {
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>, BackupError> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(BackupError::EncryptionError("Invalid hex string length".to_string()));
     }
     (0..s.len())
@@ -133,16 +133,14 @@ impl BackupConfigStorePort for FileBackupStore {
                 *cache = Some(self.read_data()?);
             }
             let mut cfg = cache.as_ref().unwrap().config.clone();
-            if let Ok(pw) = std::env::var("BACKUP_ENCRYPTION_PASSWORD") {
-                if !pw.is_empty() {
+            if let Ok(pw) = std::env::var("BACKUP_ENCRYPTION_PASSWORD")
+                && !pw.is_empty() {
                     cfg.encryption_password = pw;
                 }
-            }
-            if let Ok(tok) = std::env::var("PCLOUD_TOKEN") {
-                if !tok.is_empty() {
+            if let Ok(tok) = std::env::var("PCLOUD_TOKEN")
+                && !tok.is_empty() {
                     cfg.pcloud_token = tok;
                 }
-            }
             Ok(cfg)
         })
     }

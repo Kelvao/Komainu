@@ -354,6 +354,8 @@ async fn test_qr_code_authentication_flow() {
         .unwrap();
     let res_start = router.clone().oneshot(req_start).await.unwrap();
     assert_eq!(res_start.status(), StatusCode::OK);
+    let bind_cookie = res_start.headers().get("set-cookie").unwrap().to_str().unwrap().to_string();
+    assert!(bind_cookie.contains("komainu_qr_bind="));
     let body_bytes = to_bytes(res_start.into_body(), usize::MAX).await.unwrap();
     let start_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     let qr_id_str = start_json["qr_id"].as_str().unwrap();
@@ -363,9 +365,18 @@ async fn test_qr_code_authentication_flow() {
     assert!(qr_url.contains("/qr-login?token="));
     assert!(svg.contains("<svg"));
 
-    // 2. Polling enquanto pendente
+    // 1.1 Polling sem cookie de bind do iniciador é rejeitado (SEC-10)
+    let req_unauth = Request::builder()
+        .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+        .body(Body::empty())
+        .unwrap();
+    let res_unauth = router.clone().oneshot(req_unauth).await.unwrap();
+    assert_eq!(res_unauth.status(), StatusCode::FORBIDDEN);
+
+    // 2. Polling legítimo enquanto pendente
     let req_poll1 = Request::builder()
         .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+        .header("cookie", &bind_cookie)
         .body(Body::empty())
         .unwrap();
     let res_poll1 = router.clone().oneshot(req_poll1).await.unwrap();
@@ -385,6 +396,7 @@ async fn test_qr_code_authentication_flow() {
     // 4. Polling agora deve retornar "scanned"
     let req_poll2 = Request::builder()
         .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+        .header("cookie", &bind_cookie)
         .body(Body::empty())
         .unwrap();
     let res_poll2 = router.clone().oneshot(req_poll2).await.unwrap();
@@ -399,6 +411,7 @@ async fn test_qr_code_authentication_flow() {
     // 6. Polling detecta aprovação e emite cookie de sessão
     let req_poll3 = Request::builder()
         .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+        .header("cookie", &bind_cookie)
         .body(Body::empty())
         .unwrap();
     let res_poll3 = router.clone().oneshot(req_poll3).await.unwrap();
@@ -412,6 +425,7 @@ async fn test_qr_code_authentication_flow() {
     // 7. Próximo polling deve retornar "expired" pois a sessão foi consumida
     let req_poll4 = Request::builder()
         .uri(format!("/api/auth/qr_poll?id={qr_id}"))
+        .header("cookie", &bind_cookie)
         .body(Body::empty())
         .unwrap();
     let res_poll4 = router.clone().oneshot(req_poll4).await.unwrap();

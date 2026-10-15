@@ -9,7 +9,7 @@ use webauthn_rs::prelude::{
 };
 
 use crate::infrastructure::http::session::{
-    is_authenticated, resolve_i18n, SESSION_COOKIE, SESSION_DURATION_SECS,
+    is_authenticated, resolve_i18n, QR_BIND_COOKIE, SESSION_COOKIE, SESSION_DURATION_SECS,
 };
 use crate::infrastructure::http::views::auth::{
     render_login_page, render_qr_expired_page, render_qr_login_page, render_register_page,
@@ -103,11 +103,13 @@ pub struct QrStartResponse {
 }
 
 pub async fn qr_start_handler(
+    jar: SignedCookieJar,
     headers: HeaderMap,
     State(state): State<AppState>,
     Query(query): Query<QrStartQuery>,
 ) -> Response {
-    let qr_id = state.auth_service.create_qr_session().await;
+    let bind_secret = Uuid::new_v4().to_string();
+    let qr_id = state.auth_service.create_qr_session(Some(bind_secret.clone())).await;
 
     let host_origin = {
         let proto = headers
@@ -154,7 +156,15 @@ pub async fn qr_start_handler(
         }
     };
 
-    Json(QrStartResponse { qr_id, qr_url, svg }).into_response()
+    let mut bind_cookie = Cookie::new(QR_BIND_COOKIE, format!("{qr_id}:{bind_secret}"));
+    bind_cookie.set_path("/");
+    bind_cookie.set_http_only(true);
+    bind_cookie.set_max_age(Some(time::Duration::seconds(300)));
+    bind_cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
+    bind_cookie.set_secure(state.rp_origin.starts_with("https://"));
+
+    let jar = jar.add(bind_cookie);
+    (jar, Json(QrStartResponse { qr_id, qr_url, svg })).into_response()
 }
 
 #[derive(Deserialize)]
@@ -177,7 +187,20 @@ pub async fn qr_poll_handler(
         None => return (StatusCode::BAD_REQUEST, "Missing id").into_response(),
     };
 
-    if let Some(now) = state.auth_service.consume_approved_qr_session(qr_id).await {
+    let bind_secret = match jar.get(QR_BIND_COOKIE).and_then(|c| {
+        let val = c.value();
+        let (id_str, secret) = val.split_once(':')?;
+        if id_str == qr_id.to_string() {
+            Some(secret.to_string())
+        } else {
+            None
+        }
+    }) {
+        Some(s) => s,
+        None => return (StatusCode::FORBIDDEN, "Invalid or missing QR initiator session").into_response(),
+    };
+
+    if let Some(now) = state.auth_service.consume_approved_qr_session(qr_id, Some(&bind_secret)).await {
         let tag = state.auth_service.credential_tag();
         let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:{tag}"));
         cookie.set_path("/");
@@ -186,7 +209,11 @@ pub async fn qr_poll_handler(
         cookie.set_same_site(axum_extra::extract::cookie::SameSite::Lax);
         cookie.set_secure(state.rp_origin.starts_with("https://"));
 
-        let jar = jar.add(cookie);
+        let mut remove_bind = Cookie::new(QR_BIND_COOKIE, "");
+        remove_bind.set_path("/");
+        remove_bind.set_max_age(Some(time::Duration::seconds(0)));
+
+        let jar = jar.remove(remove_bind).add(cookie);
         return (jar, Json(QrPollResponse { status: "approved" })).into_response();
     }
 

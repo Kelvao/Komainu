@@ -6,6 +6,7 @@ use crate::infrastructure::http::AppState;
 pub const SESSION_COOKIE: &str = "komainu_session";
 pub const LANG_COOKIE: &str = "komainu_lang";
 pub const PCLOUD_OAUTH_COOKIE: &str = "komainu_pcloud_oauth";
+pub const QR_BIND_COOKIE: &str = "komainu_qr_bind";
 pub const SESSION_DURATION_SECS: u64 = 7 * 24 * 3600; // 7 days
 
 pub fn derive_cookie_key(secret: &str) -> Key {

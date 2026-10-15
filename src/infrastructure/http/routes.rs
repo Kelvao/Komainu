@@ -36,12 +36,11 @@ pub async fn csrf_protection_middleware(
                     tracing::warn!("CSRF rejected: Origin '{origin}' does not match expected '{expected}'");
                     return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Origin").into_response();
                 }
-            } else if let Some(referer) = request.headers().get("referer").and_then(|v| v.to_str().ok()) {
-                if !referer.starts_with(expected) {
+            } else if let Some(referer) = request.headers().get("referer").and_then(|v| v.to_str().ok())
+                && !referer.starts_with(expected) {
                     tracing::warn!("CSRF rejected: Referer '{referer}' does not match expected '{expected}'");
                     return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Referer").into_response();
                 }
-            }
         }
     }
     next.run(request).await
