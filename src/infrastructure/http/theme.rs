@@ -33,6 +33,11 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   transition-property: background-color, border-color, color, transform;
 }
 
+/* Alinhamento numérico tabular */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Transições suaves para HTMX */
 .htmx-swapping {
   opacity: 0.85;

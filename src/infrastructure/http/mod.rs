@@ -1400,7 +1400,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div class="flex flex-col justify-between">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_cpu}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-cyan-400 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {container_cpu_bar_pct:.1}%"></div>
@@ -1411,7 +1411,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div class="flex flex-col justify-between">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{container_ram}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {container_ram_bar_pct:.1}%"></div>
@@ -1435,7 +1435,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {cpu_usage:.1}%"></div>
@@ -1443,7 +1443,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-rose-400 font-semibold">{cpu_usage:.1}%</span>
+                    <span class="text-rose-400 font-semibold tabular-nums">{cpu_usage:.1}%</span>
                 </div>
             </div>
 
@@ -1452,7 +1452,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-purple-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {ram_pct:.1}%"></div>
@@ -1460,7 +1460,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-purple-400 font-semibold">{ram_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-purple-400 font-semibold tabular-nums">{ram_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
 
@@ -1469,7 +1469,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
-                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-emerald-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {disk_pct:.1}%"></div>
@@ -1477,7 +1477,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
-                    <span class="text-emerald-400 font-semibold">{disk_pct:.1}% {occupied_suffix}</span>
+                    <span class="text-emerald-400 font-semibold tabular-nums">{disk_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
         </div>
