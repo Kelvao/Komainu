@@ -1,4 +1,4 @@
-use crate::domain::backup::{BackupError, BoxFuture, PCloudClientPort, PCloudRegion};
+use crate::domain::backup::{BackupError, BoxFuture, PCloudClientPort, PCloudRegion, PCloudRemoteFile};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -107,6 +107,214 @@ impl PCloudClientPort for HttpPCloudClient {
                     }
                 }
             }
+        })
+    }
+
+    fn list_folder(
+        &self,
+        region: &PCloudRegion,
+        token: &str,
+        folder: &str,
+    ) -> BoxFuture<'_, Result<Vec<PCloudRemoteFile>, BackupError>> {
+        let region = region.clone();
+        let token = token.to_string();
+        let folder = folder.trim().to_string();
+
+        Box::pin(async move {
+            if token.is_empty() {
+                return Err(BackupError::PCloudUploadFailed(
+                    "pCloud access token is not configured".to_string(),
+                ));
+            }
+
+            let folder_param = if folder.is_empty() || folder == "0" {
+                "folderid=0".to_string()
+            } else if folder.chars().all(|c| c.is_ascii_digit()) {
+                format!("folderid={}", folder)
+            } else {
+                format!("path={}", urlencoding_path(&folder))
+            };
+
+            let url = format!(
+                "https://{}/listfolder?{}&access_token={}",
+                region.api_host(),
+                folder_param,
+                token
+            );
+
+            let res = self
+                .client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("HTTP listfolder request failed: {e}")))?;
+
+            if !res.status().is_success() {
+                return Err(BackupError::PCloudUploadFailed(format!(
+                    "pCloud server returned HTTP status {}",
+                    res.status()
+                )));
+            }
+
+            let body_text = res
+                .text()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to read response: {e}")))?;
+
+            #[derive(Deserialize)]
+            struct PCloudListFolderResponse {
+                result: i32,
+                error: Option<String>,
+                metadata: Option<PCloudFolderMetadata>,
+            }
+
+            #[derive(Deserialize)]
+            struct PCloudFolderMetadata {
+                contents: Option<Vec<PCloudItemMetadata>>,
+            }
+
+            #[derive(Deserialize)]
+            struct PCloudItemMetadata {
+                fileid: Option<u64>,
+                name: String,
+                size: Option<u64>,
+                isfolder: bool,
+                modified: Option<String>,
+            }
+
+            let resp: PCloudListFolderResponse = serde_json::from_str(&body_text)
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to parse listfolder JSON: {e}")))?;
+
+            if resp.result != 0 {
+                let err_msg = resp.error.unwrap_or_else(|| format!("pCloud error code {}", resp.result));
+                return Err(BackupError::PCloudUploadFailed(err_msg));
+            }
+
+            let mut files = Vec::new();
+            if let Some(contents) = resp.metadata.and_then(|m| m.contents) {
+                for item in contents {
+                    if !item.isfolder && let Some(fileid) = item.fileid {
+                        files.push(PCloudRemoteFile {
+                            fileid,
+                            name: item.name,
+                            size_bytes: item.size.unwrap_or(0),
+                            modified: item.modified.unwrap_or_default(),
+                        });
+                    }
+                }
+            }
+
+            files.sort_by(|a, b| b.name.cmp(&a.name));
+            Ok(files)
+        })
+    }
+
+    fn download_file(
+        &self,
+        region: &PCloudRegion,
+        token: &str,
+        fileid: u64,
+        dest_path: &std::path::Path,
+    ) -> BoxFuture<'_, Result<(), BackupError>> {
+        let region = region.clone();
+        let token = token.to_string();
+        let dest_path = dest_path.to_path_buf();
+
+        Box::pin(async move {
+            if token.is_empty() {
+                return Err(BackupError::PCloudUploadFailed(
+                    "pCloud access token is not configured".to_string(),
+                ));
+            }
+
+            let url = format!(
+                "https://{}/getfilelink?fileid={}&access_token={}",
+                region.api_host(),
+                fileid,
+                token
+            );
+
+            let res = self
+                .client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("HTTP getfilelink request failed: {e}")))?;
+
+            if !res.status().is_success() {
+                return Err(BackupError::PCloudUploadFailed(format!(
+                    "pCloud server returned HTTP status {}",
+                    res.status()
+                )));
+            }
+
+            #[derive(Deserialize)]
+            struct PCloudGetFileLinkResponse {
+                result: i32,
+                error: Option<String>,
+                hosts: Option<Vec<String>>,
+                path: Option<String>,
+            }
+
+            let body_text = res
+                .text()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to read response: {e}")))?;
+
+            let link_resp: PCloudGetFileLinkResponse = serde_json::from_str(&body_text)
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to parse getfilelink JSON: {e}")))?;
+
+            if link_resp.result != 0 {
+                let err_msg = link_resp.error.unwrap_or_else(|| format!("pCloud error code {}", link_resp.result));
+                return Err(BackupError::PCloudUploadFailed(err_msg));
+            }
+
+            let host = link_resp
+                .hosts
+                .and_then(|h| h.into_iter().next())
+                .ok_or_else(|| BackupError::PCloudUploadFailed("No host returned for file download".to_string()))?;
+            let path = link_resp
+                .path
+                .ok_or_else(|| BackupError::PCloudUploadFailed("No path returned for file download".to_string()))?;
+
+            let download_url = format!("https://{}{}", host, path);
+            let mut download_res = self
+                .client
+                .get(&download_url)
+                .send()
+                .await
+                .map_err(|e| BackupError::PCloudUploadFailed(format!("Failed to initiate file download: {e}")))?;
+
+            if !download_res.status().is_success() {
+                return Err(BackupError::PCloudUploadFailed(format!(
+                    "Download endpoint returned HTTP status {}",
+                    download_res.status()
+                )));
+            }
+
+            let mut out_file = tokio::fs::File::create(&dest_path)
+                .await
+                .map_err(|e| BackupError::IoError(format!("Failed to create destination file: {e}")))?;
+
+            while let Some(chunk) = download_res
+                .chunk()
+                .await
+                .map_err(|e| BackupError::IoError(format!("Failed reading download chunk: {e}")))?
+            {
+                use tokio::io::AsyncWriteExt;
+                out_file
+                    .write_all(&chunk)
+                    .await
+                    .map_err(|e| BackupError::IoError(format!("Failed writing download chunk: {e}")))?;
+            }
+
+            use tokio::io::AsyncWriteExt;
+            out_file
+                .flush()
+                .await
+                .map_err(|e| BackupError::IoError(format!("Failed flushing downloaded file: {e}")))?;
+
+            Ok(())
         })
     }
 }

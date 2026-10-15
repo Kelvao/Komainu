@@ -240,6 +240,95 @@ pub fn decrypt_aes_256_gcm(payload: &[u8], password: &str) -> Result<Vec<u8>, Ba
     Ok(plaintext)
 }
 
+/// Stream-decrypt a file on disk using AES-256-GCM.
+/// Memory usage is constant (bounded to a 64KB buffer) regardless of file size.
+pub fn decrypt_file_aes_256_gcm(
+    src_path: &std::path::Path,
+    dst_path: &std::path::Path,
+    password: &str,
+) -> Result<u64, BackupError> {
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use openssl::hash::MessageDigest;
+    use openssl::pkcs5::pbkdf2_hmac;
+    use openssl::symm::{Cipher, Crypter, Mode};
+
+    if password.is_empty() {
+        return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
+    }
+
+    let mut in_file = File::open(src_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
+    let mut out_file = File::create(dst_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?;
+
+    let mut header = [0u8; 16 + 12 + 16];
+    in_file.read_exact(&mut header)
+        .map_err(|e| BackupError::EncryptionError(format!("Ciphertext payload too short or invalid header: {e}")))?;
+
+    let salt = &header[..16];
+    let nonce = &header[16..28];
+    let tag = &header[28..44];
+
+    let mut key = [0u8; 32];
+    pbkdf2_hmac(password.as_bytes(), salt, 100_000, MessageDigest::sha256(), &mut key)
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let cipher = Cipher::aes_256_gcm();
+    let mut crypter = Crypter::new(cipher, Mode::Decrypt, &key, Some(nonce))
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    crypter.set_tag(tag)
+        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+
+    let mut in_buf = [0u8; 64 * 1024];
+    let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
+    let mut total_written = 0u64;
+
+    loop {
+        let n = in_file.read(&mut in_buf)
+            .map_err(|e| BackupError::IoError(format!("Failed reading encrypted stream: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        let count = crypter.update(&in_buf[..n], &mut out_buf)
+            .map_err(|e| BackupError::EncryptionError(format!("Decryption failed: {e}")))?;
+        if count > 0 {
+            out_file.write_all(&out_buf[..count])
+                .map_err(|e| BackupError::IoError(format!("Failed writing decrypted chunk: {e}")))?;
+            total_written += count as u64;
+        }
+    }
+
+    let final_count = crypter.finalize(&mut out_buf)
+        .map_err(|e| BackupError::EncryptionError(format!("Decryption authentication failed: {e}")))?;
+    if final_count > 0 {
+        out_file.write_all(&out_buf[..final_count])
+            .map_err(|e| BackupError::IoError(format!("Failed writing final decrypted chunk: {e}")))?;
+        total_written += final_count as u64;
+    }
+
+    out_file.flush()
+        .map_err(|e| BackupError::IoError(format!("Failed to flush decrypted file: {e}")))?;
+
+    Ok(total_written)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PCloudRemoteFile {
+    pub fileid: u64,
+    pub name: String,
+    pub size_bytes: u64,
+    pub modified: String,
+}
+
+pub struct TempFileGuard(pub std::path::PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 pub trait BackupConfigStorePort: Send + Sync {
     fn load_config(&self) -> BoxFuture<'_, Result<BackupConfig, BackupError>>;
     fn save_config(&self, config: &BackupConfig) -> BoxFuture<'_, Result<(), BackupError>>;
@@ -255,6 +344,21 @@ pub trait PCloudClientPort: Send + Sync {
         folder: &str,
         filename: &str,
         data: Vec<u8>,
+    ) -> BoxFuture<'_, Result<(), BackupError>>;
+
+    fn list_folder(
+        &self,
+        region: &PCloudRegion,
+        token: &str,
+        folder: &str,
+    ) -> BoxFuture<'_, Result<Vec<PCloudRemoteFile>, BackupError>>;
+
+    fn download_file(
+        &self,
+        region: &PCloudRegion,
+        token: &str,
+        fileid: u64,
+        dest_path: &std::path::Path,
     ) -> BoxFuture<'_, Result<(), BackupError>>;
 }
 
@@ -303,6 +407,11 @@ mod tests {
         let encrypted_bytes = std::fs::read(&dst).unwrap();
         let decrypted = decrypt_aes_256_gcm(&encrypted_bytes, pass).expect("Decryption failed");
         assert_eq!(decrypted, original_data);
+
+        let decrypted_file = dir.join("decrypted.bin");
+        decrypt_file_aes_256_gcm(&dst, &decrypted_file, pass).expect("File decryption failed");
+        let decrypted_from_file = std::fs::read(&decrypted_file).unwrap();
+        assert_eq!(decrypted_from_file, original_data);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

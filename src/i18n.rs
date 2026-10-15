@@ -300,6 +300,12 @@ pub struct BackupsTranslations {
     pub table_duration: String,
     #[serde(default = "default_b_tbl_st")]
     pub table_status: String,
+    #[serde(default = "default_b_tbl_act")]
+    pub table_action: String,
+    #[serde(default = "default_b_btn_dl_dec")]
+    pub btn_download_decrypted: String,
+    #[serde(default = "default_b_st_remote")]
+    pub status_remote: String,
     #[serde(default = "default_b_st_succ")]
     pub status_success: String,
     #[serde(default = "default_b_st_fail")]
@@ -364,6 +370,9 @@ fn default_b_tbl_fn() -> String { "Arquivo Gerado".to_string() }
 fn default_b_tbl_sz() -> String { "Tamanho".to_string() }
 fn default_b_tbl_dur() -> String { "Duração".to_string() }
 fn default_b_tbl_st() -> String { "Status".to_string() }
+fn default_b_tbl_act() -> String { "Ação".to_string() }
+fn default_b_btn_dl_dec() -> String { "Baixar Descriptografado".to_string() }
+fn default_b_st_remote() -> String { "Na Nuvem".to_string() }
 fn default_b_st_succ() -> String { "Sucesso".to_string() }
 fn default_b_st_fail() -> String { "Falha".to_string() }
 fn default_b_cfg_saved() -> String { "Configurações de backup salvas com sucesso!".to_string() }

@@ -78,6 +78,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/backups/config", post(backup_save_config_handler))
         .route("/api/backups/run", post(backup_run_now_handler))
         .route("/api/backups/fragment", get(backup_fragment_handler))
+        .route("/api/backups/download", get(backup_download_handler))
         .route("/api/backups/pcloud/authorize", post(pcloud_oauth_authorize_post_handler).get(pcloud_oauth_authorize_get_handler))
         .route("/api/backups/pcloud/callback", get(pcloud_oauth_callback_handler))
         .route("/api/backups/pcloud/disconnect", post(pcloud_disconnect_handler))
@@ -1597,6 +1598,101 @@ async fn backup_fragment_handler(
     Html(render_backups_fragment(&state, &i18n, None).await).into_response()
 }
 
+#[derive(Deserialize)]
+struct BackupDownloadQuery {
+    fileid: u64,
+    filename: Option<String>,
+}
+
+async fn backup_download_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+    Query(query): Query<BackupDownloadQuery>,
+) -> Response {
+    let i18n = resolve_i18n(&jar, &state);
+    if !is_authenticated(&jar) {
+        return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
+    }
+
+    let temp_dec_path = std::env::temp_dir().join(format!("komainu_dl_{}_{}.zip", query.fileid, Uuid::new_v4()));
+    let _guard = crate::domain::backup::TempFileGuard(temp_dec_path.clone());
+
+    if let Err(e) = state
+        .backup_service
+        .download_and_decrypt_backup(query.fileid, &temp_dec_path)
+        .await
+    {
+        tracing::error!("Download and decrypt failed for fileid {}: {e}", query.fileid);
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("{}: {e}", i18n.common.operation_failed),
+        )
+            .into_response();
+    }
+
+    let file_bytes = match tokio::fs::read(&temp_dec_path).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!("Failed to read decrypted file: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{}: {e}", i18n.common.operation_failed),
+            )
+                .into_response();
+        }
+    };
+
+    let raw_name = query.filename.unwrap_or_else(|| format!("backup_{}.zip", query.fileid));
+    let mut clean_name = raw_name
+        .trim_end_matches(".enc")
+        .to_string();
+    if !clean_name.ends_with(".zip") {
+        clean_name.push_str(".zip");
+    }
+    let safe_name: String = clean_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+
+    let content_disposition = format!("attachment; filename=\"{}\"", safe_name);
+
+    (
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, "application/zip"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                content_disposition.as_str(),
+            ),
+        ],
+        file_bytes,
+    )
+        .into_response()
+}
+
+fn format_file_date(modified: &str, filename: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(modified) {
+        return dt.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string();
+    }
+    if let Some(pos) = filename.find("backup_") {
+        let rest = &filename[pos + 7..];
+        if rest.len() >= 15 {
+            let date_part = &rest[..15];
+            if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_part, "%Y%m%d_%H%M%S") {
+                if let Some(local_dt) = naive.and_local_timezone(chrono::Local).single() {
+                    return local_dt.format("%d/%m/%Y %H:%M:%S").to_string();
+                }
+                return naive.format("%d/%m/%Y %H:%M:%S").to_string();
+            }
+        }
+    }
+    if !modified.is_empty() {
+        modified.to_string()
+    } else {
+        "N/A".to_string()
+    }
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
         return "0 B".to_string();
@@ -1623,6 +1719,7 @@ async fn render_backups_fragment(
 ) -> String {
     let config = state.backup_service.get_config().await.unwrap_or_default();
     let history = state.backup_service.get_history().await.unwrap_or_default();
+    let remote_files = state.backup_service.list_remote_backups().await.unwrap_or_default();
     let is_in_progress = state.backup_service.is_in_progress().await;
     let data_exists = state.backup_service.data_path_exists();
     let env_exists = state.backup_service.env_path_exists();
@@ -1712,12 +1809,36 @@ async fn render_backups_fragment(
     };
 
     let mut history_rows = String::new();
-    if history.is_empty() {
-        history_rows.push_str(&format!(
-            r##"<tr><td colspan="5" class="py-8 text-center text-xs text-slate-500 font-mono">{}</td></tr>"##,
-            i18n.backups.history_empty
-        ));
-    } else {
+    if !remote_files.is_empty() {
+        for file in remote_files {
+            let dt_str = format_file_date(&file.modified, &file.name);
+            let sz_str = format_bytes(file.size_bytes);
+            let enc_name = crate::infrastructure::pcloud::urlencoding_path(&file.name);
+            history_rows.push_str(&format!(
+                r##"<tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono">
+                    <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
+                    <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
+                    <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold border bg-emerald-500/10 text-emerald-400 border-emerald-500/25">{status_remote}</span>
+                    </td>
+                    <td class="py-3 px-3 text-right whitespace-nowrap">
+                        <a href="/api/backups/download?fileid={fileid}&filename={enc_name}" download class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 hover:text-white border border-rose-500/30 hover:border-rose-500/50 text-[11px] font-mono font-medium transition-colors shadow-sm">
+                            <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            <span>{btn_download}</span>
+                        </a>
+                    </td>
+                </tr>"##,
+                dt_str = dt_str,
+                filename = file.name,
+                sz_str = sz_str,
+                status_remote = i18n.backups.status_remote,
+                fileid = file.fileid,
+                enc_name = enc_name,
+                btn_download = i18n.backups.btn_download_decrypted,
+            ));
+        }
+    } else if !history.is_empty() {
         for rec in history.iter().take(20) {
             let dt_str = chrono::DateTime::from_timestamp(rec.timestamp as i64, 0)
                 .map(|dt| dt.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string())
@@ -1727,25 +1848,28 @@ async fn render_backups_fragment(
                 crate::domain::backup::BackupStatus::Failed(e) => (e.as_str(), "bg-rose-500/10 text-rose-400 border-rose-500/25"),
             };
             let sz_str = format_bytes(rec.size_bytes);
-            let dur_str = format!("{}s", rec.duration_secs);
             history_rows.push_str(&format!(
                 r##"<tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono">
                     <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
                     <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
                     <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
-                    <td class="py-3 px-3 text-slate-400 tabular-nums whitespace-nowrap">{dur_str}</td>
                     <td class="py-3 px-3 whitespace-nowrap">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold border {badge_color}">{badge}</span>
                     </td>
+                    <td class="py-3 px-3 text-right text-slate-500 whitespace-nowrap">-</td>
                 </tr>"##,
                 dt_str = dt_str,
                 filename = rec.filename,
                 sz_str = sz_str,
-                dur_str = dur_str,
                 badge = badge,
                 badge_color = badge_color,
             ));
         }
+    } else {
+        history_rows.push_str(&format!(
+            r##"<tr><td colspan="5" class="py-8 text-center text-xs text-slate-500 font-mono">{}</td></tr>"##,
+            i18n.backups.history_empty
+        ));
     }
 
     let enc_pass_ph = if config.encryption_password.is_empty() {
@@ -1999,8 +2123,8 @@ async fn render_backups_fragment(
                         <th class="py-2.5 px-3">{table_date}</th>
                         <th class="py-2.5 px-3">{table_filename}</th>
                         <th class="py-2.5 px-3">{table_size}</th>
-                        <th class="py-2.5 px-3">{table_duration}</th>
                         <th class="py-2.5 px-3">{table_status}</th>
+                        <th class="py-2.5 px-3 text-right">{table_action}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2084,8 +2208,8 @@ async fn render_backups_fragment(
         table_date = i18n.backups.table_date,
         table_filename = i18n.backups.table_filename,
         table_size = i18n.backups.table_size,
-        table_duration = i18n.backups.table_duration,
         table_status = i18n.backups.table_status,
+        table_action = i18n.backups.table_action,
         history_rows = history_rows,
     )
 }
@@ -2533,7 +2657,7 @@ mod tests {
     }
 
     use std::sync::Mutex;
-    use crate::domain::backup::{BackupConfig, BackupConfigStorePort, BackupError, BackupRecord, PCloudClientPort, PCloudRegion};
+    use crate::domain::backup::{BackupConfig, BackupConfigStorePort, BackupError, BackupRecord, PCloudClientPort, PCloudRegion, PCloudRemoteFile};
     use crate::application::backup_service::BackupService;
 
     struct MockBackupConfigStore {
@@ -2580,6 +2704,45 @@ mod tests {
             _data: Vec<u8>,
         ) -> BoxFuture<'_, Result<(), BackupError>> {
             Box::pin(async move { Ok(()) })
+        }
+
+        fn list_folder(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _folder: &str,
+        ) -> BoxFuture<'_, Result<Vec<PCloudRemoteFile>, BackupError>> {
+            Box::pin(async move {
+                Ok(vec![PCloudRemoteFile {
+                    fileid: 123456,
+                    name: "vaultwarden_backup_20261014_220000.zip.enc".to_string(),
+                    size_bytes: 2048,
+                    modified: "Sat, 14 Oct 2026 22:00:00 +0000".to_string(),
+                }])
+            })
+        }
+
+        fn download_file(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _fileid: u64,
+            dest_path: &std::path::Path,
+        ) -> BoxFuture<'_, Result<(), BackupError>> {
+            let dest_path = dest_path.to_path_buf();
+            Box::pin(async move {
+                let mut zip_bytes = Vec::new();
+                {
+                    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+                    zip.start_file("db.sqlite3", zip::write::SimpleFileOptions::default()).unwrap();
+                    std::io::Write::write_all(&mut zip, b"SQLITE_TEST_DATA").unwrap();
+                    zip.finish().unwrap();
+                }
+                let enc = crate::domain::backup::encrypt_aes_256_gcm(&zip_bytes, "strong_password")
+                    .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+                std::fs::write(&dest_path, enc)
+                    .map_err(|e| BackupError::IoError(e.to_string()))
+            })
         }
     }
 
@@ -3165,9 +3328,59 @@ mod tests {
             .header("cookie", cookie_str)
             .body(Body::empty())
             .unwrap();
-        let res_cb_csrf = router.oneshot(req_cb_csrf).await.unwrap();
+        let res_cb_csrf = router.clone().oneshot(req_cb_csrf).await.unwrap();
         assert_eq!(res_cb_csrf.status(), StatusCode::SEE_OTHER);
         let loc_csrf = res_cb_csrf.headers().get("location").unwrap().to_str().unwrap();
         assert!(loc_csrf.contains("pcloud_error=invalid_oauth_state"));
+
+        // 9. Test unauthenticated GET /api/backups/download -> 401
+        let req_dl_unauth = Request::builder()
+            .uri("/api/backups/download?fileid=123456&filename=test.zip.enc")
+            .body(Body::empty())
+            .unwrap();
+        let res_dl_unauth = router.clone().oneshot(req_dl_unauth).await.unwrap();
+        assert_eq!(res_dl_unauth.status(), StatusCode::UNAUTHORIZED);
+
+        // 10. Test authenticated GET /api/backups/download -> 200 OK with decrypted zip
+        // First re-enable pcloud token and set encryption password
+        let mut ready_cfg = state.backup_service.get_config().await.unwrap();
+        ready_cfg.pcloud_token = "valid_token".to_string();
+        ready_cfg.encryption_password = "strong_password".to_string();
+        state.backup_service.save_config(&ready_cfg).await.unwrap();
+
+        let req_dl_auth = Request::builder()
+            .uri("/api/backups/download?fileid=123456&filename=vaultwarden_backup_20261014_220000.zip.enc")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_dl_auth = router.clone().oneshot(req_dl_auth).await.unwrap();
+        assert_eq!(res_dl_auth.status(), StatusCode::OK);
+        assert_eq!(
+            res_dl_auth.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/zip"
+        );
+        let cd = res_dl_auth.headers().get("content-disposition").unwrap().to_str().unwrap();
+        assert!(cd.contains("attachment; filename=\"vaultwarden_backup_20261014_220000.zip\""));
+
+        let dl_bytes = to_bytes(res_dl_auth.into_body(), usize::MAX).await.unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(dl_bytes)).unwrap();
+        let mut db_file = archive.by_name("db.sqlite3").unwrap();
+        let mut db_content = Vec::new();
+        std::io::Read::read_to_end(&mut db_file, &mut db_content).unwrap();
+        assert_eq!(db_content, b"SQLITE_TEST_DATA");
+
+        // 11. Test authenticated GET /api/backups/fragment lists remote files and download button
+        let req_frag_remote = Request::builder()
+            .uri("/api/backups/fragment")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_frag_remote = router.oneshot(req_frag_remote).await.unwrap();
+        assert_eq!(res_frag_remote.status(), StatusCode::OK);
+        let frag_bytes = to_bytes(res_frag_remote.into_body(), usize::MAX).await.unwrap();
+        let frag_html = String::from_utf8(frag_bytes.to_vec()).unwrap();
+        assert!(frag_html.contains("vaultwarden_backup_20261014_220000.zip.enc"));
+        assert!(frag_html.contains("/api/backups/download?fileid=123456"));
+        assert!(frag_html.contains("Baixar Descriptografado"));
     }
 }

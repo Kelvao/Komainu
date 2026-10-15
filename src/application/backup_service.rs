@@ -1,6 +1,6 @@
 use crate::domain::backup::{
-    encrypt_file_aes_256_gcm, BackupConfig, BackupConfigStorePort, BackupError, BackupRecord,
-    BackupStatus, PCloudClientPort,
+    decrypt_file_aes_256_gcm, encrypt_file_aes_256_gcm, BackupConfig, BackupConfigStorePort,
+    BackupError, BackupRecord, BackupStatus, PCloudClientPort, PCloudRemoteFile, TempFileGuard,
 };
 use crate::domain::container::ContainerPort;
 use chrono::{Local, Timelike};
@@ -22,14 +22,6 @@ struct BackupRunningGuard(Arc<AtomicBool>);
 impl Drop for BackupRunningGuard {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
-    }
-}
-
-struct TempFileGuard(PathBuf);
-
-impl Drop for TempFileGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
     }
 }
 
@@ -81,6 +73,49 @@ impl BackupService {
 
     pub async fn get_history(&self) -> Result<Vec<BackupRecord>, BackupError> {
         self.config_store.load_history().await
+    }
+
+    pub async fn list_remote_backups(&self) -> Result<Vec<PCloudRemoteFile>, BackupError> {
+        let config = self.config_store.load_config().await?;
+        if config.pcloud_token.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        self.pcloud_client
+            .list_folder(&config.pcloud_region, &config.pcloud_token, &config.pcloud_folder)
+            .await
+    }
+
+    pub async fn download_and_decrypt_backup(
+        &self,
+        fileid: u64,
+        dest_decrypted_path: &Path,
+    ) -> Result<u64, BackupError> {
+        let config = self.config_store.load_config().await?;
+        if config.pcloud_token.trim().is_empty() {
+            return Err(BackupError::PCloudUploadFailed(
+                "pCloud access token is not configured".to_string(),
+            ));
+        }
+        if config.encryption_password.is_empty() {
+            return Err(BackupError::EncryptionError(
+                "Encryption password is not configured".to_string(),
+            ));
+        }
+
+        let temp_enc_path = std::env::temp_dir().join(format!("vw_dl_enc_{}_{}.tmp", fileid, Uuid::new_v4()));
+        let _enc_guard = TempFileGuard(temp_enc_path.clone());
+
+        self.pcloud_client
+            .download_file(&config.pcloud_region, &config.pcloud_token, fileid, &temp_enc_path)
+            .await?;
+
+        let decrypted_bytes = decrypt_file_aes_256_gcm(
+            &temp_enc_path,
+            dest_decrypted_path,
+            &config.encryption_password,
+        )?;
+
+        Ok(decrypted_bytes)
     }
 
     pub async fn is_in_progress(&self) -> bool {
@@ -549,6 +584,37 @@ mod tests {
             *self.last_uploaded_data.lock().unwrap() = data;
             Box::pin(async { Ok(()) })
         }
+
+        fn list_folder(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _folder: &str,
+        ) -> BoxFuture<'_, Result<Vec<PCloudRemoteFile>, BackupError>> {
+            Box::pin(async {
+                Ok(vec![PCloudRemoteFile {
+                    fileid: 99999,
+                    name: "vaultwarden_backup_20261014_220000.zip.enc".to_string(),
+                    size_bytes: 1024,
+                    modified: "Sat, 14 Oct 2026 22:00:00 +0000".to_string(),
+                }])
+            })
+        }
+
+        fn download_file(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _fileid: u64,
+            dest_path: &std::path::Path,
+        ) -> BoxFuture<'_, Result<(), BackupError>> {
+            let data = self.last_uploaded_data.lock().unwrap().clone();
+            let dest_path = dest_path.to_path_buf();
+            Box::pin(async move {
+                fs::write(&dest_path, data)
+                    .map_err(|e| BackupError::IoError(e.to_string()))
+            })
+        }
     }
 
     #[tokio::test]
@@ -607,18 +673,36 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].id, record.id);
 
-        // Verify decryption of the uploaded data
-        let encrypted_bytes = pcloud_client.last_uploaded_data.lock().unwrap().clone();
-        let decrypted_zip = decrypt_aes_256_gcm(&encrypted_bytes, "my-vault-encryption-pass")
-            .expect("Decryption must succeed with correct password");
+        // Verify list_remote_backups
+        let remote_files = service.list_remote_backups().await.unwrap();
+        assert_eq!(remote_files.len(), 1);
+        assert_eq!(remote_files[0].fileid, 99999);
 
-        // Inspect ZIP contents
-        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(decrypted_zip)).expect("Must be valid ZIP");
+        // Verify download_and_decrypt_backup
+        let dest_decrypted = tmp_root.join("decrypted_test.zip");
+        let bytes_written = service
+            .download_and_decrypt_backup(99999, &dest_decrypted)
+            .await
+            .expect("Download and decrypt must succeed");
+        assert!(bytes_written > 0);
+        assert!(dest_decrypted.exists());
+
+        // Inspect ZIP contents from downloaded and decrypted file
+        let file = fs::File::open(&dest_decrypted).unwrap();
+        let mut archive = zip::ZipArchive::new(file).expect("Must be valid ZIP");
         assert!(archive.by_name("db.sqlite3").is_ok());
         assert!(archive.by_name("attachments/doc.pdf").is_ok());
         assert!(archive.by_name("sends/send.txt").is_ok());
         assert!(archive.by_name("rsa_key.pem").is_ok());
         assert!(archive.by_name("vaultwarden.env").is_ok());
+
+        // Verify decryption of the uploaded data directly
+        let encrypted_bytes = pcloud_client.last_uploaded_data.lock().unwrap().clone();
+        let decrypted_zip = decrypt_aes_256_gcm(&encrypted_bytes, "my-vault-encryption-pass")
+            .expect("Decryption must succeed with correct password");
+
+        let mut archive2 = zip::ZipArchive::new(std::io::Cursor::new(decrypted_zip)).expect("Must be valid ZIP");
+        assert!(archive2.by_name("db.sqlite3").is_ok());
 
         let _ = fs::remove_dir_all(&tmp_root);
     }
