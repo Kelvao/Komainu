@@ -158,10 +158,10 @@ pub fn encrypt_file_aes_256_gcm(
     let mut nonce = [0u8; 12];
     rand_bytes(&mut nonce).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
 
-    let mut in_file = File::open(src_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?;
-    let mut out_file = File::create(dst_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to create encrypted file: {e}")))?;
+    let mut in_file = std::io::BufReader::with_capacity(64 * 1024, File::open(src_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?);
+    let mut out_file = std::io::BufWriter::with_capacity(128 * 1024, File::create(dst_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to create encrypted file: {e}")))?);
 
     // Write header: salt (16), nonce (12), placeholder tag (16)
     out_file.write_all(&salt)
@@ -217,7 +217,7 @@ pub fn encrypt_file_aes_256_gcm(
     out_file.flush()
         .map_err(|e| BackupError::IoError(format!("Failed to flush encrypted file: {e}")))?;
 
-    let total_len = out_file.metadata().map(|m| m.len()).unwrap_or(0);
+    let total_len = out_file.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
     Ok(total_len)
 }
 
@@ -265,10 +265,10 @@ pub fn decrypt_file_aes_256_gcm(
             return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
         }
 
-        let mut in_file = File::open(src_path)
-            .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
-        let mut out_file = File::create(dst_path)
-            .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?;
+        let mut in_file = std::io::BufReader::with_capacity(64 * 1024, File::open(src_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?);
+        let mut out_file = std::io::BufWriter::with_capacity(128 * 1024, File::create(dst_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?);
 
         let mut header = [0u8; 16 + 12 + 16];
         in_file.read_exact(&mut header)

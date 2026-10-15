@@ -284,7 +284,7 @@ impl BackupService {
         let sqlite_file_path_clone = sqlite_file_path.clone();
         let temp_zip_path_clone = temp_zip_path.clone();
         let zip_res = tokio::task::spawn_blocking(move || {
-            Self::build_zip_archive(&vw_data_path_clone, &sqlite_file_path_clone, &temp_zip_path_clone)
+            Self::build_zip_archive(&vw_data_path_clone, &sqlite_file_path_clone, &temp_zip_path_clone, is_temp_snapshot)
         })
         .await
         .map_err(|e| BackupError::IoError(format!("Zip packaging task failed: {e}")))?;
@@ -295,11 +295,6 @@ impl BackupService {
             }
             self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
             return Err(e);
-        }
-
-        // Cleanup do snapshot gerado após incluir no zip para economizar disco
-        if is_temp_snapshot {
-            let _ = fs::remove_file(&sqlite_file_path);
         }
 
         // 4. Criptografar com AES-256-GCM via streaming em arquivo temporário (64KB de RAM)
@@ -420,7 +415,7 @@ impl BackupService {
             .ok_or_else(|| BackupError::DatabaseBackupNotFound("No db_*.sqlite3 snapshot found".to_string()))
     }
 
-    fn build_zip_archive(vw_data_path: &Path, sqlite_path: &Path, out_path: &Path) -> Result<(), BackupError> {
+    fn build_zip_archive(vw_data_path: &Path, sqlite_path: &Path, out_path: &Path, is_temp_snapshot: bool) -> Result<(), BackupError> {
         let file = fs::File::create(out_path)
             .map_err(|e| BackupError::IoError(format!("Failed to create temporary backup zip: {e}")))?;
         let writer = std::io::BufWriter::with_capacity(128 * 1024, file);
@@ -438,6 +433,10 @@ impl BackupService {
                 .map_err(|e| BackupError::ZipError(e.to_string()))?;
             std::io::copy(&mut db_reader, &mut zip)
                 .map_err(|e| BackupError::IoError(format!("Failed to write database to zip: {e}")))?;
+            drop(db_reader);
+            if is_temp_snapshot {
+                let _ = fs::remove_file(sqlite_path);
+            }
         }
 
         // 2. attachments/
