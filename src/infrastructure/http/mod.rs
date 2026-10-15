@@ -1256,14 +1256,26 @@ async fn backup_save_config_handler(
         return (StatusCode::UNAUTHORIZED, i18n.common.unauthorized.clone()).into_response();
     }
 
+    let existing = state.backup_service.get_config().await.unwrap_or_default();
+
     let enabled = form.enabled.as_deref() == Some("on");
     let cron_expression = form.cron_expression.unwrap_or_else(|| "0 3 * * *".to_string()).trim().to_string();
-    let encryption_password = form.encryption_password.unwrap_or_default().trim().to_string();
+    let submitted_pw = form.encryption_password.unwrap_or_default().trim().to_string();
+    let encryption_password = if submitted_pw.is_empty() {
+        existing.encryption_password
+    } else {
+        submitted_pw
+    };
     let pcloud_region = match form.pcloud_region.as_deref() {
         Some("US") => crate::domain::backup::PCloudRegion::US,
         _ => crate::domain::backup::PCloudRegion::EU,
     };
-    let pcloud_token = form.pcloud_token.unwrap_or_default().trim().to_string();
+    let submitted_tok = form.pcloud_token.unwrap_or_default().trim().to_string();
+    let pcloud_token = if submitted_tok.is_empty() {
+        existing.pcloud_token
+    } else {
+        submitted_tok
+    };
     let pcloud_folder = form.pcloud_folder.unwrap_or_else(|| "0".to_string()).trim().to_string();
 
     let new_cfg = crate::domain::backup::BackupConfig {
@@ -2587,7 +2599,7 @@ mod tests {
             rp_origin: "http://localhost:3000".to_string(),
         };
 
-        let router = create_router(state);
+        let router = create_router(state.clone());
 
         // 1. Unauthenticated POST /api/backups/config -> 401
         let req_unauth = Request::builder()
@@ -2626,7 +2638,22 @@ mod tests {
         assert!(body.contains("Configurações de backup salvas com sucesso!"));
         assert!(body.contains("0 4 * * *"));
 
-        // 3. Authenticated GET /api/backups/fragment -> 200
+        // 3. Save config with empty credentials - existing ones should be preserved
+        let req_save_blank = Request::builder()
+            .uri("/api/backups/config")
+            .method("POST")
+            .header("cookie", cookie_str)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("enabled=on&cron_expression=0+5+*+*+*&pcloud_region=EU&pcloud_token=&pcloud_folder=12345&encryption_password="))
+            .unwrap();
+        let res_save_blank = router.clone().oneshot(req_save_blank).await.unwrap();
+        assert_eq!(res_save_blank.status(), StatusCode::OK);
+        let saved_cfg = state.backup_service.get_config().await.unwrap();
+        assert_eq!(saved_cfg.encryption_password, "strong_password");
+        assert_eq!(saved_cfg.pcloud_token, "test_tok");
+        assert_eq!(saved_cfg.cron_expression, "0 5 * * *");
+
+        // 4. Authenticated GET /api/backups/fragment -> 200
         let req_frag = Request::builder()
             .uri("/api/backups/fragment")
             .header("cookie", cookie_str)
