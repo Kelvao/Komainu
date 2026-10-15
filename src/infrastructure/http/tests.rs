@@ -655,10 +655,12 @@ async fn test_backup_api_endpoints() {
     assert!(frag_body.contains("••••••••••••"));
     assert!(frag_body.contains("Conectado"));
 
-    // 5. Test OAuth authorize redirect (GET without params and POST with form body)
+    // 5. Test OAuth authorize redirect (POST with empty body and POST with form body)
     let req_auth_oauth = Request::builder()
         .uri("/api/backups/pcloud/authorize")
+        .method("POST")
         .header("cookie", cookie_str)
+        .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::empty())
         .unwrap();
     let res_auth_oauth = router.clone().oneshot(req_auth_oauth).await.unwrap();
@@ -697,6 +699,8 @@ async fn test_backup_api_endpoints() {
     // 7. Unauthenticated OAuth endpoints reject with 303 Redirect or 401
     let req_unauth_auth = Request::builder()
         .uri("/api/backups/pcloud/authorize")
+        .method("POST")
+        .header("content-type", "application/x-www-form-urlencoded")
         .body(Body::empty())
         .unwrap();
     let res_unauth_auth = router.clone().oneshot(req_unauth_auth).await.unwrap();
@@ -953,6 +957,31 @@ async fn test_csrf_origin_validation() {
         .unwrap();
     let res_trusted = router.oneshot(req_trusted).await.unwrap();
     assert_ne!(res_trusted.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_logout_and_pcloud_authorize_reject_get() {
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    let state = create_test_app_state(auth_service, "pt-BR");
+    let router = create_router(state);
+
+    // 1. GET /logout is not allowed (SEC-11)
+    let req_get_logout = Request::builder()
+        .uri("/logout")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let res_get_logout = router.clone().oneshot(req_get_logout).await.unwrap();
+    assert_eq!(res_get_logout.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    // 2. GET /api/backups/pcloud/authorize is not allowed (SEC-11)
+    let req_get_oauth = Request::builder()
+        .uri("/api/backups/pcloud/authorize")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let res_get_oauth = router.oneshot(req_get_oauth).await.unwrap();
+    assert_eq!(res_get_oauth.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
 

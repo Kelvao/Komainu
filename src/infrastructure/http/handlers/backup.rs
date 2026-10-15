@@ -132,13 +132,6 @@ pub async fn pcloud_oauth_authorize_post_handler(
     pcloud_oauth_authorize_internal(jar, state, form.client_id, form.client_secret).await
 }
 
-pub async fn pcloud_oauth_authorize_get_handler(
-    jar: SignedCookieJar,
-    State(state): State<AppState>,
-) -> Response {
-    pcloud_oauth_authorize_internal(jar, state, None, None).await
-}
-
 async fn pcloud_oauth_authorize_internal(
     jar: SignedCookieJar,
     state: AppState,
