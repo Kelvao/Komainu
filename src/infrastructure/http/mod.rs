@@ -3115,12 +3115,60 @@ mod tests {
             .header("cookie", cookie_str)
             .body(Body::empty())
             .unwrap();
-        let res_disc = router.oneshot(req_disc).await.unwrap();
+        let res_disc = router.clone().oneshot(req_disc).await.unwrap();
         assert_eq!(res_disc.status(), StatusCode::OK);
         let disc_bytes = to_bytes(res_disc.into_body(), usize::MAX).await.unwrap();
         let disc_body = String::from_utf8(disc_bytes.to_vec()).unwrap();
         assert!(disc_body.contains(&state.i18n.backups.pcloud_not_connected));
         let updated_cfg = state.backup_service.get_config().await.unwrap();
         assert_eq!(updated_cfg.pcloud_token, "");
+
+        // 7. Unauthenticated OAuth endpoints reject with 303 Redirect or 401
+        let req_unauth_auth = Request::builder()
+            .uri("/api/backups/pcloud/authorize")
+            .body(Body::empty())
+            .unwrap();
+        let res_unauth_auth = router.clone().oneshot(req_unauth_auth).await.unwrap();
+        assert_eq!(res_unauth_auth.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res_unauth_auth.headers().get("location").unwrap().to_str().unwrap(), "/login");
+
+        let req_unauth_cb = Request::builder()
+            .uri("/api/backups/pcloud/callback?code=abc&state=xyz")
+            .body(Body::empty())
+            .unwrap();
+        let res_unauth_cb = router.clone().oneshot(req_unauth_cb).await.unwrap();
+        assert_eq!(res_unauth_cb.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res_unauth_cb.headers().get("location").unwrap().to_str().unwrap(), "/login");
+
+        let req_unauth_disc = Request::builder()
+            .uri("/api/backups/pcloud/disconnect")
+            .method("POST")
+            .body(Body::empty())
+            .unwrap();
+        let res_unauth_disc = router.clone().oneshot(req_unauth_disc).await.unwrap();
+        assert_eq!(res_unauth_disc.status(), StatusCode::UNAUTHORIZED);
+
+        // 8. OAuth callback error handling and state validation
+        // Provider returned error
+        let req_cb_err = Request::builder()
+            .uri("/api/backups/pcloud/callback?error=access_denied&error_description=User+denied")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_cb_err = router.clone().oneshot(req_cb_err).await.unwrap();
+        assert_eq!(res_cb_err.status(), StatusCode::SEE_OTHER);
+        let loc_err = res_cb_err.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc_err.contains("pcloud_error=access_denied"));
+
+        // CSRF: callback with mismatched state
+        let req_cb_csrf = Request::builder()
+            .uri("/api/backups/pcloud/callback?code=good_code&state=forged_state")
+            .header("cookie", cookie_str)
+            .body(Body::empty())
+            .unwrap();
+        let res_cb_csrf = router.oneshot(req_cb_csrf).await.unwrap();
+        assert_eq!(res_cb_csrf.status(), StatusCode::SEE_OTHER);
+        let loc_csrf = res_cb_csrf.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc_csrf.contains("pcloud_error=invalid_oauth_state"));
     }
 }
