@@ -1,6 +1,4 @@
 /target
-/bin
 .env
-credentials.json
 .hallmark/
 .audit/
