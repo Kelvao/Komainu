@@ -358,30 +358,45 @@ impl ContainerPort for DockerAdapter {
                 .await
                 .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
 
-            let mut output = String::new();
-            if let bollard::exec::StartExecResults::Attached { output: mut stream, .. } = docker
-                .start_exec(&exec.id, None)
-                .await
-                .map_err(|e| ContainerError::ExecFailed(e.to_string()))?
-            {
-                while let Some(Ok(msg)) = stream.next().await {
-                    output.push_str(&msg.to_string());
-                }
-            }
-
-            let inspect = docker
-                .inspect_exec(&exec.id)
-                .await
-                .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
-
-            if let Some(exit_code) = inspect.exit_code
-                && exit_code != 0 {
-                    return Err(ContainerError::ExecFailed(format!(
-                        "Command exited with code {exit_code}: {output}"
-                    )));
+            let exec_fut = async {
+                let mut output = String::new();
+                if let bollard::exec::StartExecResults::Attached { output: mut stream, .. } = docker
+                    .start_exec(&exec.id, None)
+                    .await
+                    .map_err(|e| ContainerError::ExecFailed(e.to_string()))?
+                {
+                    const MAX_EXEC_OUTPUT_BYTES: usize = 64 * 1024;
+                    while let Some(Ok(msg)) = stream.next().await {
+                        let msg_str = msg.to_string();
+                        if output.len() + msg_str.len() <= MAX_EXEC_OUTPUT_BYTES {
+                            output.push_str(&msg_str);
+                        } else if output.len() < MAX_EXEC_OUTPUT_BYTES {
+                            let remain = MAX_EXEC_OUTPUT_BYTES - output.len();
+                            output.push_str(&msg_str[..remain]);
+                            output.push_str("... [output truncated]");
+                        }
+                    }
                 }
 
-            Ok(output)
+                let inspect = docker
+                    .inspect_exec(&exec.id)
+                    .await
+                    .map_err(|e| ContainerError::ExecFailed(e.to_string()))?;
+
+                if let Some(exit_code) = inspect.exit_code
+                    && exit_code != 0 {
+                        return Err(ContainerError::ExecFailed(format!(
+                            "Command exited with code {exit_code}: {output}"
+                        )));
+                    }
+
+                Ok(output)
+            };
+
+            const EXEC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+            tokio::time::timeout(EXEC_TIMEOUT, exec_fut)
+                .await
+                .map_err(|_| ContainerError::ExecFailed("Container command execution timed out (300s limit exceeded)".to_string()))?
         })
     }
 }
