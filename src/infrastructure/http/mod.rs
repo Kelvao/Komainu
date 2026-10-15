@@ -225,7 +225,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
                 <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                 <span>SYS // AUTH_GATEWAY</span>
             </div>
-            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+            <a href="{base_path}/set-lang?lang={next_lang}&redirect={login_redirect}" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                 <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                 <span>{lang_btn_label}</span>
             </a>
@@ -245,11 +245,11 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
 
         <!-- Segmented Tab Switcher -->
         <div class="grid grid-cols-2 gap-1 p-1 bg-canvas rounded-lg border border-white/[0.08] mb-6">
-            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
+            <button type="button" id="tab-btn-local" onclick="switchLoginTab('local')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35">
                 <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                 <span>{tab_local}</span>
             </button>
-            <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
+            <button type="button" id="tab-btn-qr" onclick="switchLoginTab('qr')" class="py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent">
                 <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
                 <span>{tab_qr}</span>
             </button>
@@ -266,7 +266,7 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
             <button 
                 id="login-btn"
                 onclick="startLogin()"
-                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
+                class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
                 <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                 <span>{btn_text}</span>
             </button>
@@ -320,14 +320,14 @@ async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> Resp
         errDiv.classList.add('hidden');
 
         if (tab === 'local') {{
-            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
-            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
+            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
+            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
             viewLocal.classList.remove('hidden');
             viewQr.classList.add('hidden');
             stopQrPolling();
         }} else {{
-            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
-            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-all text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
+            btnQr.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-white bg-rose-500/20 shadow-sm flex items-center justify-center gap-1.5 border border-rose-500/35";
+            btnLocal.className = "py-2 px-3 rounded-md text-xs font-mono font-medium transition-colors duration-150 text-slate-400 hover:text-white flex items-center justify-center gap-1.5 border border-transparent";
             viewQr.classList.remove('hidden');
             viewLocal.classList.add('hidden');
             if (!currentQrId) {{
@@ -727,7 +727,7 @@ async fn qr_login_page(
             <button 
                 id="approve-btn"
                 onclick="startMobileApproval('{token}')"
-                class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
+                class="w-full py-3.5 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-rose-400/30">
                 <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 <span>{mobile_btn}</span>
             </button>
@@ -943,7 +943,7 @@ async fn register_page(
         <button 
             id="reg-btn"
             onclick="startRegistration('{token}')"
-            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-150 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
+            class="w-full py-3 px-4 rounded-lg text-sm font-semibold transition-colors duration-150 shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-40 disabled:cursor-wait text-white border border-emerald-400/30">
             <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             <span>{btn_text}</span>
         </button>
@@ -1122,12 +1122,12 @@ async fn dashboard_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
                     <span>{active_monitoring}</span>
                 </span>
 
-                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
+                <a href="{base_path}/set-lang?lang={next_lang}" class="px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40" title="{lang_title}">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"/></svg>
                     <span>{lang_btn_label}</span>
                 </a>
 
-                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-all flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
+                <a href="{base_path}/logout" class="px-2.5 py-1 rounded-md text-xs font-mono font-medium text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors duration-150 flex items-center gap-1.5 border border-white/[0.08] hover:border-rose-500/40">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                     <span>{logout}</span>
                 </a>
@@ -1347,7 +1347,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm shadow-emerald-950/60">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-emerald-400/30 shadow-sm shadow-emerald-950/60">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
                     <span>{btn_start}</span>
                 </button>
@@ -1356,7 +1356,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm shadow-rose-950/60">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm shadow-rose-950/60">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
                     <span>{btn_stop}</span>
                 </button>
@@ -1364,7 +1364,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm shadow-amber-950/60">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:translate-y-px text-white border border-amber-400/30 shadow-sm shadow-amber-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <span>{btn_restart}</span>
                 </button>
@@ -1372,7 +1372,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-post="{base_path}/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm shadow-sky-950/60">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:translate-y-px text-white border border-sky-400/30 shadow-sm shadow-sky-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     <span>{btn_update}</span>
                 </button>
@@ -1381,7 +1381,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-all duration-150 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm shadow-indigo-950/60">
+                    class="px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:translate-y-px text-white border border-indigo-400/30 shadow-sm shadow-indigo-950/60">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     <span>{btn_rebuild}</span>
                 </button>
@@ -1403,7 +1403,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">{container_cpu_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-cyan-400 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
+                        <div class="bg-cyan-400 h-2 rounded-full transition-[width] duration-500 ease-out shadow-[0_0_8px_rgba(6,182,212,0.4)]" style="width: {container_cpu_bar_pct:.1}%"></div>
                     </div>
                 </div>
 
@@ -1414,7 +1414,7 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{container_ram_val}</span>
                     </div>
                     <div class="w-full bg-surface-elevated h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
+                        <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out shadow-[0_0_8px_rgba(244,63,94,0.4)]" style="width: {container_ram_bar_pct:.1}%"></div>
                     </div>
                 </div>
             </div>
@@ -1431,14 +1431,14 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Métrica CPU Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/25">{cpu_usage:.1}%</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-rose-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(244,63,94,0.35)]" style="width: {cpu_usage:.1}%"></div>
+                        <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out shadow-[0_0_8px_rgba(244,63,94,0.35)]" style="width: {cpu_usage:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
@@ -1448,14 +1448,14 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
 
             <!-- Métrica RAM Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/25">{ram_used} / {ram_total} MB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-purple-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(168,85,247,0.35)]" style="width: {ram_pct:.1}%"></div>
+                        <div class="bg-purple-500 h-2 rounded-full transition-[width] duration-500 ease-out shadow-[0_0_8px_rgba(168,85,247,0.35)]" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
@@ -1465,14 +1465,14 @@ async fn render_dashboard_fragment(state: &AppState, i18n: &crate::i18n::Transla
             </div>
 
             <!-- Métrica Disco Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-all flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
                         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">{disk_used} / {disk_total} GB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
-                        <div class="bg-emerald-500 h-2 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.35)]" style="width: {disk_pct:.1}%"></div>
+                        <div class="bg-emerald-500 h-2 rounded-full transition-[width] duration-500 ease-out shadow-[0_0_8px_rgba(16,185,129,0.35)]" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">

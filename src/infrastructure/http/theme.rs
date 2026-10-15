@@ -26,10 +26,11 @@ body {
   background-size: 100% 100%, 24px 24px;
 }
 
-/* Foco acessível uniforme em tom carmesim */
+/* Foco acessível uniforme em tom carmesim instantâneo */
 a:focus-visible, button:focus-visible, input:focus-visible {
   outline: 2px solid oklch(0.65 0.22 17);
   outline-offset: 2px;
+  transition-property: background-color, border-color, color, transform;
 }
 
 /* Transições suaves para HTMX */
