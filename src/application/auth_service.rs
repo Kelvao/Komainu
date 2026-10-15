@@ -11,11 +11,14 @@ use crate::domain::auth::{AuthError, CredentialStorePort};
 const STATE_TTL_SECS: u64 = 300; // 5 minutos
 const MAX_PENDING_STATES: usize = 50;
 
-fn prune_expired<T>(map: &mut HashMap<Uuid, (Instant, T)>) {
+fn prune_timed_map<K: std::hash::Hash + Eq + Copy, V>(
+    map: &mut HashMap<K, V>,
+    get_instant: impl Fn(&V) -> Instant,
+) {
     let now = Instant::now();
-    map.retain(|_, (created_at, _)| now.duration_since(*created_at).as_secs() < STATE_TTL_SECS);
+    map.retain(|_, v| now.duration_since(get_instant(v)).as_secs() < STATE_TTL_SECS);
     while map.len() >= MAX_PENDING_STATES {
-        if let Some(oldest_key) = map.iter().min_by_key(|(_, (ts, _))| *ts).map(|(k, _)| *k) {
+        if let Some(oldest_key) = map.iter().min_by_key(|(_, v)| get_instant(v)).map(|(k, _)| *k) {
             map.remove(&oldest_key);
         } else {
             break;
@@ -23,16 +26,12 @@ fn prune_expired<T>(map: &mut HashMap<Uuid, (Instant, T)>) {
     }
 }
 
+fn prune_expired<T>(map: &mut HashMap<Uuid, (Instant, T)>) {
+    prune_timed_map(map, |(ts, _)| *ts);
+}
+
 fn prune_expired_qr(map: &mut HashMap<Uuid, QrAuthState>) {
-    let now = Instant::now();
-    map.retain(|_, s| now.duration_since(s.created_at).as_secs() < STATE_TTL_SECS);
-    while map.len() >= MAX_PENDING_STATES {
-        if let Some(oldest_key) = map.iter().min_by_key(|(_, s)| s.created_at).map(|(k, _)| *k) {
-            map.remove(&oldest_key);
-        } else {
-            break;
-        }
-    }
+    prune_timed_map(map, |s| s.created_at);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
