@@ -1,8 +1,26 @@
+use axum::extract::Request;
+use axum::middleware::{from_fn, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 
 use crate::infrastructure::http::handlers::*;
 use crate::infrastructure::http::AppState;
+
+pub async fn security_headers_middleware(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(axum::http::header::X_FRAME_OPTIONS, "DENY".parse().unwrap());
+    headers.insert(axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff".parse().unwrap());
+    headers.insert(axum::http::header::REFERRER_POLICY, "strict-origin-when-cross-origin".parse().unwrap());
+    headers.insert(
+        axum::http::header::CONTENT_SECURITY_POLICY,
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+            .parse()
+            .unwrap(),
+    );
+    response
+}
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
@@ -40,5 +58,5 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/update", post(container_update_handler))
         .route("/api/container/rebuild", post(container_rebuild_handler))
         .with_state(state)
+        .layer(from_fn(security_headers_middleware))
 }
-

@@ -848,3 +848,26 @@ async fn test_logout_invalidates_session_server_side() {
     assert_eq!(res_after.headers().get("location").unwrap().to_str().unwrap(), "/login");
 }
 
+#[tokio::test]
+async fn test_security_headers_middleware() {
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    let state = create_test_app_state(auth_service, "pt-BR");
+    let router = create_router(state);
+
+    let req = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let res = router.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let headers = res.headers();
+    assert_eq!(headers.get("x-frame-options").unwrap().to_str().unwrap(), "DENY");
+    assert_eq!(headers.get("x-content-type-options").unwrap().to_str().unwrap(), "nosniff");
+    assert_eq!(headers.get("referrer-policy").unwrap().to_str().unwrap(), "strict-origin-when-cross-origin");
+    let csp = headers.get("content-security-policy").unwrap().to_str().unwrap();
+    assert!(csp.contains("frame-ancestors 'none'"));
+    assert!(csp.contains("default-src 'self'"));
+}
+
+
