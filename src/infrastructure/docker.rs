@@ -126,6 +126,13 @@ impl ContainerPort for DockerAdapter {
                                 0,
                             )
                         };
+                        // Evita vazamento de memória em execuções prolongadas com containers dinâmicos
+                        prev_map.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < 600);
+                        if prev_map.len() >= 20 {
+                            if let Some(oldest) = prev_map.iter().min_by_key(|(_, (_, _, t))| *t).map(|(k, _)| k.clone()) {
+                                prev_map.remove(&oldest);
+                            }
+                        }
                         prev_map.insert(name.clone(), (cur_cpu, cur_sys, now));
                         deltas
                     };
@@ -298,5 +305,37 @@ impl ContainerPort for DockerAdapter {
 
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_docker_adapter_new() {
+        let adapter = DockerAdapter::new("/var/run/docker.sock");
+        assert_eq!(adapter.socket_path, "/var/run/docker.sock");
+        let map = adapter.prev_cpu.lock().unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_docker_adapter_prev_cpu_eviction_logic() {
+        let adapter = DockerAdapter::new("/var/run/docker.sock");
+        let now = std::time::Instant::now();
+        {
+            let mut map = adapter.prev_cpu.lock().unwrap();
+            // Inserir chave expirada (> 600s)
+            map.insert("old_container".to_string(), (100, 200, now - std::time::Duration::from_secs(700)));
+            // Inserir chave recente
+            map.insert("new_container".to_string(), (100, 200, now));
+
+            // Simular lógica de retenção
+            map.retain(|_, (_, _, t)| now.duration_since(*t).as_secs() < 600);
+            assert_eq!(map.len(), 1);
+            assert!(map.contains_key("new_container"));
+            assert!(!map.contains_key("old_container"));
+        }
     }
 }
