@@ -22,7 +22,7 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 - **Zero runtime dependencies**: Compiles into a single standalone executable (~2.5 MB with UPX compression).
 - **Passwordless Security**: Hardware-backed Passkey (WebAuthn/FIDO2) authentication only.
 - **Cross-Device Smartphone Key**: Log in on any PC by scanning a dynamic on-screen QR code with your smartphone camera and verifying biometrics on your phone.
-- **Automated & Encrypted Off-Site Backups**: Non-locking hot backup via `vaultwarden backup`, packaging attachments, sends, env, and RSA keys from `vw-data/`, encrypted with AES-256-GCM, and uploaded to pCloud on a configurable cron schedule.
+- **Automated & Encrypted Off-Site Backups**: Non-locking hot backup via `vaultwarden backup`, packaging attachments, sends, env, and RSA keys from `vw-data/`, encrypted with AES-256-GCM, and uploaded to pCloud on a configurable cron schedule with remote cloud file browsing and one-click decrypted downloads.
 - **Zero Public Registration**: No web registration forms. The admin Passkey is registered strictly via CLI over SSH.
 - **Live Dual-Layer Monitoring**: Real-time 2-second telemetry for both the host machine and the isolated container.
 - **Dual-Cockpit Navigation**: Seamless navigation between Home (Container Lifecycle & Telemetry) and Backups (Scheduler, On-Demand Execution & History).
@@ -43,11 +43,13 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 ### 💾 Automated & Encrypted Off-Site Backups (pCloud)
 - **Zero-Downtime Hot Snapshots**: Executes the native `vaultwarden backup` command inside the container to safely snapshot SQLite without locks, corruption risks, or container restarts.
 - **Complete Secret & Data Packaging**: Bundles the database snapshot alongside `attachments/`, `sends/`, `vaultwarden.env`, `rsa_key*`, and `templates/` directly from the configured `vw-data/` path.
-- **Client-Side AES-256-GCM Encryption**: The bundled `.zip` archive is encrypted client-side with AES-256-GCM using PBKDF2 (600,000 iterations) before any network transmission.
-- **Direct pCloud Cloud Storage Sync**: Direct API streaming to pCloud (supporting EU and US data regions, and custom folder targets).
+- **Client-Side AES-256-GCM Encryption**: The bundled `.zip` archive is encrypted client-side with AES-256-GCM using PBKDF2 (100,000 iterations) before any network transmission.
+- **Direct pCloud Cloud Storage Sync & OAuth 2.0**: Direct API streaming to pCloud (supporting EU and US data regions, and custom folder targets). Connects securely through standard OAuth 2.0 with your pCloud app credentials.
+- **Remote Cloud Archive Explorer**: Lists backup archives directly from your chosen pCloud destination folder.
+- **One-Click Decrypted Downloads**: Download any remote encrypted backup archive with on-the-fly streaming AES-256-GCM decryption, serving a clean, unencrypted `.zip` archive ready to inspect or restore.
 - **Configurable Cron Scheduler**: Integrated background cron daemon supporting standard cron syntax with quick presets (Daily at 03:00, Every 12h, Weekly) and live upcoming run calculation.
-- **On-Demand Execution**: Instant tactile "Executar Backup Agora" button with real-time feedback and execution status.
-- **Audit & History Table**: Searchable history tracking execution date, archive filename, size, duration, and status.
+- **On-Demand Execution**: Instant tactile "Fazer Backup Agora" button with real-time feedback and execution status.
+- **Audit & History Table**: Searchable history tracking execution date, archive filename, size, cloud status badge, and direct decrypted download.
 
 ### 🔒 Zero Public Attack Surface Registration
 - Public web registration forms are disabled by default.
@@ -93,7 +95,7 @@ src/
 │   ├── http/           # Axum web server, HTMX handlers, theme & HTML templates
 │   │   ├── mod.rs      # Routing, session cookies, API handlers, page renderers
 │   │   └── theme.rs    # Centralized CSS head tags, fonts, and dark palette
-│   ├── pcloud.rs       # pCloud REST API client (EU/US regions, streaming upload)
+│   ├── pcloud.rs       # pCloud REST API client (EU/US regions, upload/download, folder listing)
 │   └── system.rs       # Sysinfo adapter with non-blocking disk inspection
 ├── cli.rs              # Command-line interface definitions (Clap)
 ├── config.rs           # Environment variable validation & security alerts
