@@ -48,6 +48,6 @@ pub async fn run_server(host: &str, port: u16, state: AppState) -> Result<(), Bo
         .map_err(|e| format!("Invalid bind address '{addr_str}': {e}"))?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!("Komainu rodando em http://{}", addr);
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
     Ok(())
 }

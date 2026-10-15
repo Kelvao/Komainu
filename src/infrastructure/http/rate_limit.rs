@@ -58,19 +58,32 @@ pub async fn rate_limit_middleware(
     next.run(req).await
 }
 
-fn extract_client_ip(req: &Request) -> String {
-    if let Some(forwarded) = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok())
-        && let Some(first) = forwarded.split(',').next() {
-            let trimmed = first.trim();
+pub(crate) fn extract_client_ip(req: &Request) -> String {
+    let peer_ip = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string());
+
+    let is_trusted_proxy = match peer_ip.as_deref() {
+        Some(ip) => ip == "127.0.0.1" || ip == "::1",
+        None => true, // Fallback for synthetic requests in tests
+    };
+
+    if is_trusted_proxy {
+        if let Some(forwarded) = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok())
+            && let Some(first) = forwarded.split(',').next() {
+                let trimmed = first.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        if let Some(real_ip) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
+            let trimmed = real_ip.trim();
             if !trimmed.is_empty() {
                 return trimmed.to_string();
             }
         }
-    if let Some(real_ip) = req.headers().get("x-real-ip").and_then(|v| v.to_str().ok()) {
-        let trimmed = real_ip.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
     }
-    "127.0.0.1".to_string()
+
+    peer_ip.unwrap_or_else(|| "127.0.0.1".to_string())
 }

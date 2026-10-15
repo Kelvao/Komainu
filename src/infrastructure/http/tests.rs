@@ -983,6 +983,31 @@ async fn test_logout_and_pcloud_authorize_reject_get() {
     assert_eq!(res_get_oauth.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
+#[test]
+fn test_extract_client_ip_prevents_spoofing() {
+    use std::net::SocketAddr;
+    use axum::extract::ConnectInfo;
+    use crate::infrastructure::http::rate_limit::extract_client_ip;
+
+    // 1. Untrusted remote peer -> ignores spoofed X-Forwarded-For
+    let mut req_remote = Request::builder()
+        .header("x-forwarded-for", "1.2.3.4")
+        .body(Body::empty())
+        .unwrap();
+    let remote_addr: SocketAddr = "203.0.113.195:44321".parse().unwrap();
+    req_remote.extensions_mut().insert(ConnectInfo(remote_addr));
+    assert_eq!(extract_client_ip(&req_remote), "203.0.113.195");
+
+    // 2. Trusted loopback peer -> respects X-Forwarded-For
+    let mut req_loopback = Request::builder()
+        .header("x-forwarded-for", "198.51.100.55, 127.0.0.1")
+        .body(Body::empty())
+        .unwrap();
+    let loopback_addr: SocketAddr = "127.0.0.1:44321".parse().unwrap();
+    req_loopback.extensions_mut().insert(ConnectInfo(loopback_addr));
+    assert_eq!(extract_client_ip(&req_loopback), "198.51.100.55");
+}
+
 
 
 
