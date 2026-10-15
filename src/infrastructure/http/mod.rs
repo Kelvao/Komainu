@@ -78,7 +78,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/backups/config", post(backup_save_config_handler))
         .route("/api/backups/run", post(backup_run_now_handler))
         .route("/api/backups/fragment", get(backup_fragment_handler))
-        .route("/api/backups/pcloud/authorize", get(pcloud_oauth_authorize_handler))
+        .route("/api/backups/pcloud/authorize", post(pcloud_oauth_authorize_post_handler).get(pcloud_oauth_authorize_get_handler))
         .route("/api/backups/pcloud/callback", get(pcloud_oauth_callback_handler))
         .route("/api/backups/pcloud/disconnect", post(pcloud_disconnect_handler))
         .route("/api/dashboard-fragment", get(dashboard_fragment_handler))
@@ -1339,15 +1339,31 @@ async fn backup_save_config_handler(
 }
 
 #[derive(Deserialize, Default)]
-struct PCloudAuthorizeQuery {
+struct PCloudAuthorizeForm {
     client_id: Option<String>,
     client_secret: Option<String>,
 }
 
-async fn pcloud_oauth_authorize_handler(
+async fn pcloud_oauth_authorize_post_handler(
     jar: SignedCookieJar,
     State(state): State<AppState>,
-    Query(query): Query<PCloudAuthorizeQuery>,
+    axum::extract::Form(form): axum::extract::Form<PCloudAuthorizeForm>,
+) -> Response {
+    pcloud_oauth_authorize_internal(jar, state, form.client_id, form.client_secret).await
+}
+
+async fn pcloud_oauth_authorize_get_handler(
+    jar: SignedCookieJar,
+    State(state): State<AppState>,
+) -> Response {
+    pcloud_oauth_authorize_internal(jar, state, None, None).await
+}
+
+async fn pcloud_oauth_authorize_internal(
+    jar: SignedCookieJar,
+    state: AppState,
+    client_id: Option<String>,
+    client_secret: Option<String>,
 ) -> Response {
     if !is_authenticated(&jar) {
         return Redirect::to("/login").into_response();
@@ -1356,11 +1372,11 @@ async fn pcloud_oauth_authorize_handler(
     let mut cfg = state.backup_service.get_config().await.unwrap_or_default();
 
     let mut changed = false;
-    if let Some(cid) = query.client_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+    if let Some(cid) = client_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
         cfg.pcloud_client_id = cid;
         changed = true;
     }
-    if let Some(csec) = query.client_secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+    if let Some(csec) = client_secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
         cfg.pcloud_client_secret = csec;
         changed = true;
     }
@@ -1375,7 +1391,7 @@ async fn pcloud_oauth_authorize_handler(
     };
 
     if effective_client_id.is_empty() {
-        return Redirect::to("/backups?pcloud_error=missing_client_id").into_response();
+        return (jar, Redirect::to("/backups?pcloud_error=missing_client_id")).into_response();
     }
 
     let redirect_uri = format!("{}/api/backups/pcloud/callback", state.rp_origin.trim_end_matches('/'));
@@ -1996,13 +2012,25 @@ async fn render_backups_fragment(
     function startPCloudOAuth() {{
         const cidEl = document.getElementById('pcloud-cid');
         const csecEl = document.getElementById('pcloud-csec');
-        const cid = cidEl ? cidEl.value.trim() : '';
-        const csec = csecEl ? csecEl.value.trim() : '';
-        const params = new URLSearchParams();
-        if (cid) params.set('client_id', cid);
-        if (csec) params.set('client_secret', csec);
-        const qs = params.toString();
-        window.location.href = qs ? '/api/backups/pcloud/authorize?' + qs : '/api/backups/pcloud/authorize';
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/api/backups/pcloud/authorize';
+        if (cidEl && cidEl.value.trim()) {{
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'client_id';
+            input.value = cidEl.value.trim();
+            form.appendChild(input);
+        }}
+        if (csecEl && csecEl.value.trim()) {{
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'client_secret';
+            input.value = csecEl.value.trim();
+            form.appendChild(input);
+        }}
+        document.body.appendChild(form);
+        form.submit();
     }}
     </script>
 </div>"##,
@@ -3053,7 +3081,7 @@ mod tests {
         assert!(frag_body.contains("••••••••••••"));
         assert!(frag_body.contains("Conectado"));
 
-        // 5. Test OAuth authorize redirect
+        // 5. Test OAuth authorize redirect (GET without params and POST with form body)
         let req_auth_oauth = Request::builder()
             .uri("/api/backups/pcloud/authorize")
             .header("cookie", cookie_str)
@@ -3064,6 +3092,18 @@ mod tests {
         let loc = res_auth_oauth.headers().get("location").unwrap().to_str().unwrap();
         assert!(loc.starts_with("https://my.pcloud.com/oauth2/authorize?client_id=test_cid"));
         assert!(loc.contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fbackups%2Fpcloud%2Fcallback"));
+
+        let req_auth_post = Request::builder()
+            .uri("/api/backups/pcloud/authorize")
+            .method("POST")
+            .header("cookie", cookie_str)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("client_id=post_cid&client_secret=post_sec"))
+            .unwrap();
+        let res_auth_post = router.clone().oneshot(req_auth_post).await.unwrap();
+        assert_eq!(res_auth_post.status(), StatusCode::SEE_OTHER);
+        let loc_post = res_auth_post.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc_post.starts_with("https://my.pcloud.com/oauth2/authorize?client_id=post_cid"));
 
         // 6. Test OAuth disconnect
         let req_disc = Request::builder()
