@@ -168,11 +168,18 @@ impl BackupService {
             .download_file(&config.pcloud_region, &config.pcloud_token, fileid, &temp_enc_path)
             .await?;
 
-        let decrypted_bytes = decrypt_file_aes_256_gcm(
-            &temp_enc_path,
-            dest_decrypted_path,
-            &config.encryption_password,
-        )?;
+        let temp_enc_clone = temp_enc_path.clone();
+        let dest_decrypted_clone = dest_decrypted_path.to_path_buf();
+        let dec_pass = config.encryption_password.clone();
+        let decrypted_bytes = tokio::task::spawn_blocking(move || {
+            decrypt_file_aes_256_gcm(
+                &temp_enc_clone,
+                &dest_decrypted_clone,
+                &dec_pass,
+            )
+        })
+        .await
+        .map_err(|e| BackupError::EncryptionError(format!("Decryption task failed: {e}")))??;
 
         Ok(decrypted_bytes)
     }
@@ -273,7 +280,16 @@ impl BackupService {
         let _temp_zip_guard = TempFileGuard(temp_zip_path.clone());
 
         info!("Packaging assets into temporary archive on disk...");
-        if let Err(e) = self.build_zip_archive(&sqlite_file_path, &temp_zip_path) {
+        let vw_data_path_clone = self.vw_data_path.clone();
+        let sqlite_file_path_clone = sqlite_file_path.clone();
+        let temp_zip_path_clone = temp_zip_path.clone();
+        let zip_res = tokio::task::spawn_blocking(move || {
+            Self::build_zip_archive(&vw_data_path_clone, &sqlite_file_path_clone, &temp_zip_path_clone)
+        })
+        .await
+        .map_err(|e| BackupError::IoError(format!("Zip packaging task failed: {e}")))?;
+
+        if let Err(e) = zip_res {
             if is_temp_snapshot {
                 let _ = fs::remove_file(&sqlite_file_path);
             }
@@ -291,7 +307,16 @@ impl BackupService {
         let _temp_enc_guard = TempFileGuard(temp_enc_path.clone());
 
         info!("Encrypting backup archive with AES-256-GCM...");
-        if let Err(e) = encrypt_file_aes_256_gcm(&temp_zip_path, &temp_enc_path, &config.encryption_password) {
+        let temp_zip_path_clone2 = temp_zip_path.clone();
+        let temp_enc_path_clone = temp_enc_path.clone();
+        let enc_password = config.encryption_password.clone();
+        let enc_res = tokio::task::spawn_blocking(move || {
+            encrypt_file_aes_256_gcm(&temp_zip_path_clone2, &temp_enc_path_clone, &enc_password)
+        })
+        .await
+        .map_err(|e| BackupError::EncryptionError(format!("Encryption task failed: {e}")))?;
+
+        if let Err(e) = enc_res {
             self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
             return Err(e);
         }
@@ -299,10 +324,16 @@ impl BackupService {
         // Deleta o arquivo zip temporário imediatamente para liberar espaço no disco
         drop(_temp_zip_guard);
 
-        let encrypted_data = match fs::read(&temp_enc_path) {
-            Ok(data) => data,
-            Err(e) => {
+        let temp_enc_path_clone2 = temp_enc_path.clone();
+        let encrypted_data = match tokio::task::spawn_blocking(move || fs::read(&temp_enc_path_clone2)).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(e)) => {
                 let err = BackupError::IoError(format!("Failed to read encrypted backup: {e}"));
+                self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
+                return Err(err);
+            }
+            Err(e) => {
+                let err = BackupError::IoError(format!("Read task failed: {e}"));
                 self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &err.to_string(), start_time.elapsed().as_secs()).await;
                 return Err(err);
             }
@@ -389,7 +420,7 @@ impl BackupService {
             .ok_or_else(|| BackupError::DatabaseBackupNotFound("No db_*.sqlite3 snapshot found".to_string()))
     }
 
-    fn build_zip_archive(&self, sqlite_path: &Path, out_path: &Path) -> Result<(), BackupError> {
+    fn build_zip_archive(vw_data_path: &Path, sqlite_path: &Path, out_path: &Path) -> Result<(), BackupError> {
         let file = fs::File::create(out_path)
             .map_err(|e| BackupError::IoError(format!("Failed to create temporary backup zip: {e}")))?;
         let writer = std::io::BufWriter::with_capacity(128 * 1024, file);
@@ -410,25 +441,25 @@ impl BackupService {
         }
 
         // 2. attachments/
-        let attachments_dir = self.vw_data_path.join("attachments");
+        let attachments_dir = vw_data_path.join("attachments");
         if attachments_dir.is_dir() {
-            self.add_directory_to_zip(&mut zip, &attachments_dir, "attachments", options)?;
+            Self::add_directory_to_zip(&mut zip, &attachments_dir, "attachments", options)?;
         }
 
         // 3. sends/
-        let sends_dir = self.vw_data_path.join("sends");
+        let sends_dir = vw_data_path.join("sends");
         if sends_dir.is_dir() {
-            self.add_directory_to_zip(&mut zip, &sends_dir, "sends", options)?;
+            Self::add_directory_to_zip(&mut zip, &sends_dir, "sends", options)?;
         }
 
         // 4. templates/
-        let templates_dir = self.vw_data_path.join("templates");
+        let templates_dir = vw_data_path.join("templates");
         if templates_dir.is_dir() {
-            self.add_directory_to_zip(&mut zip, &templates_dir, "templates", options)?;
+            Self::add_directory_to_zip(&mut zip, &templates_dir, "templates", options)?;
         }
 
         // 5. rsa_key files
-        if let Ok(entries) = fs::read_dir(&self.vw_data_path) {
+        if let Ok(entries) = fs::read_dir(vw_data_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
@@ -442,7 +473,7 @@ impl BackupService {
 
         // 6. vaultwarden.env or .env inside vw_data_path
         for env_name in &["vaultwarden.env", ".env"] {
-            let env_candidate = self.vw_data_path.join(env_name);
+            let env_candidate = vw_data_path.join(env_name);
             if env_candidate.is_file()
                 && let Ok(mut env_file) = fs::File::open(&env_candidate)
                     && zip.start_file(*env_name, options).is_ok() {
@@ -459,7 +490,6 @@ impl BackupService {
     }
 
     fn add_directory_to_zip<W: Write + std::io::Seek>(
-        &self,
         zip: &mut ZipWriter<W>,
         src_dir: &Path,
         zip_prefix: &str,
@@ -483,7 +513,7 @@ impl BackupService {
             let zip_path = format!("{}/{}", zip_prefix, file_name);
 
             if path.is_dir() {
-                self.add_directory_to_zip(zip, &path, &zip_path, options)?;
+                Self::add_directory_to_zip(zip, &path, &zip_path, options)?;
             } else if path.is_file() {
                 let file_options = if is_already_compressed(&path) {
                     options.compression_method(zip::CompressionMethod::Stored)
