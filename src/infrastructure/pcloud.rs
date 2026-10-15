@@ -50,13 +50,7 @@ impl PCloudClientPort for HttpPCloudClient {
                 ));
             }
 
-            let folder_param = if folder.is_empty() || folder == "0" {
-                "folderid=0".to_string()
-            } else if folder.chars().all(|c| c.is_ascii_digit()) {
-                format!("folderid={}", folder)
-            } else {
-                format!("path={}", urlencoding_path(&folder))
-            };
+            let folder_param = normalize_folder_param(&folder);
 
             let url = format!(
                 "https://{}/uploadfile?{}&access_token={}&nopartial=1",
@@ -127,13 +121,7 @@ impl PCloudClientPort for HttpPCloudClient {
                 ));
             }
 
-            let folder_param = if folder.is_empty() || folder == "0" {
-                "folderid=0".to_string()
-            } else if folder.chars().all(|c| c.is_ascii_digit()) {
-                format!("folderid={}", folder)
-            } else {
-                format!("path={}", urlencoding_path(&folder))
-            };
+            let folder_param = normalize_folder_param(&folder);
 
             let url = format!(
                 "https://{}/listfolder?{}&access_token={}",
@@ -319,6 +307,21 @@ impl PCloudClientPort for HttpPCloudClient {
     }
 }
 
+pub(crate) fn normalize_folder_param(folder: &str) -> String {
+    let trimmed = folder.trim();
+    if trimmed.is_empty() || trimmed == "0" {
+        "folderid=0".to_string()
+    } else if trimmed.chars().all(|c| c.is_ascii_digit()) {
+        format!("folderid={}", trimmed)
+    } else {
+        let mut path = trimmed.trim_end_matches('/').to_string();
+        if !path.starts_with('/') {
+            path.insert(0, '/');
+        }
+        format!("path={}", urlencoding_path(&path))
+    }
+}
+
 pub(crate) fn urlencoding_path(val: &str) -> String {
     let mut out = String::new();
     for b in val.bytes() {
@@ -346,6 +349,17 @@ pub(crate) fn urlencoding(val: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_folder_param() {
+        assert_eq!(normalize_folder_param(""), "folderid=0");
+        assert_eq!(normalize_folder_param("0"), "folderid=0");
+        assert_eq!(normalize_folder_param("123456"), "folderid=123456");
+        assert_eq!(normalize_folder_param("/Backups/Vaultwarden"), "path=/Backups/Vaultwarden");
+        assert_eq!(normalize_folder_param("/Backups/Vaultwarden/"), "path=/Backups/Vaultwarden");
+        assert_eq!(normalize_folder_param("Backups/Vaultwarden"), "path=/Backups/Vaultwarden");
+        assert_eq!(normalize_folder_param("Backups/My Folder"), "path=/Backups/My%20Folder");
+    }
 
     #[test]
     fn test_urlencoding() {
