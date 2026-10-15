@@ -413,10 +413,10 @@ pub async fn backup_download_handler(
             .into_response();
     }
 
-    let file_bytes = match tokio::fs::read(&temp_dec_path).await {
-        Ok(b) => b,
+    let file = match tokio::fs::File::open(&temp_dec_path).await {
+        Ok(f) => f,
         Err(e) => {
-            tracing::error!("Failed to read decrypted file: {e}");
+            tracing::error!("Failed to open decrypted file: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("{}: {e}", i18n.common.operation_failed),
@@ -424,6 +424,8 @@ pub async fn backup_download_handler(
                 .into_response();
         }
     };
+    let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&temp_dec_path);
 
     let raw_name = query.filename.unwrap_or_else(|| format!("backup_{}.zip", query.fileid));
     let mut clean_name = raw_name
@@ -443,7 +445,10 @@ pub async fn backup_download_handler(
 
     let content_disposition = format!("attachment; filename=\"{}\"", safe_name);
 
-    (
+    let stream = tokio_util::io::ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+
+    let mut response = (
         StatusCode::OK,
         [
             (axum::http::header::CONTENT_TYPE, "application/zip"),
@@ -452,8 +457,16 @@ pub async fn backup_download_handler(
                 content_disposition.as_str(),
             ),
         ],
-        file_bytes,
+        body,
     )
-        .into_response()
+        .into_response();
+
+    if file_size > 0 {
+        response.headers_mut().insert(
+            axum::http::header::CONTENT_LENGTH,
+            file_size.to_string().parse().unwrap(),
+        );
+    }
+    response
 }
 
