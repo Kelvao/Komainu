@@ -38,6 +38,40 @@ pub(crate) fn clean_env_value(val: &str) -> String {
     }
 }
 
+pub(crate) fn resolve_or_generate_session_secret() -> String {
+    let secret_file = std::path::Path::new(".session_secret");
+    if secret_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(secret_file) {
+            let trimmed = content.trim();
+            if trimmed.len() >= 32 {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    use ring::rand::{SecureRandom, SystemRandom};
+    let rng = SystemRandom::new();
+    let mut bytes = [0u8; 32];
+    if rng.fill(&mut bytes).is_ok() {
+        let hex_secret = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let _ = (|| -> Result<(), std::io::Error> {
+            let tmp_path = std::path::Path::new(".session_secret.tmp");
+            std::fs::write(tmp_path, &hex_secret)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(tmp_path, std::fs::Permissions::from_mode(0o600));
+            }
+            std::fs::rename(tmp_path, secret_file)?;
+            Ok(())
+        })();
+        tracing::info!("SESSION_SECRET was not provided: generated secure unique secret in .session_secret");
+        return hex_secret;
+    }
+
+    "dev_insecure_secret_key_change_in_prod_1234567890".to_string()
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         let _ = dotenvy::dotenv();
@@ -54,18 +88,26 @@ impl Config {
             .unwrap_or_else(|_| "/var/run/docker.sock".to_string());
         let docker_socket = clean_env_value(&docker_socket_raw);
 
-        let session_secret = env::var("SESSION_SECRET")
-            .unwrap_or_else(|_| "dev_insecure_secret_key_change_in_prod_1234567890".to_string());
-
-        if session_secret == "dev_insecure_secret_key_change_in_prod_1234567890" {
-            tracing::warn!(
-                "⚠️  AVISO DE SEGURANÇA: Usando SESSION_SECRET padrão inseguro! Configure a variável de ambiente SESSION_SECRET com uma chave aleatória de pelo menos 32 bytes para produção."
-            );
-        } else if session_secret.len() < 32 {
-            tracing::warn!(
-                "⚠️  AVISO DE SEGURANÇA: SESSION_SECRET possui menos de 32 caracteres. Recomenda-se gerar uma chave aleatória mais longa."
-            );
-        }
+        let session_secret = match env::var("SESSION_SECRET") {
+            Ok(s) => {
+                let cleaned = clean_env_value(&s);
+                if cleaned.is_empty() {
+                    resolve_or_generate_session_secret()
+                } else {
+                    if cleaned == "dev_insecure_secret_key_change_in_prod_1234567890" {
+                        tracing::warn!(
+                            "⚠️  AVISO DE SEGURANÇA: Usando SESSION_SECRET padrão inseguro! Recomenda-se configurar uma chave aleatória no .env."
+                        );
+                    } else if cleaned.len() < 32 {
+                        tracing::warn!(
+                            "⚠️  AVISO DE SEGURANÇA: SESSION_SECRET possui menos de 32 caracteres. Recomenda-se gerar uma chave aleatória mais longa."
+                        );
+                    }
+                    cleaned
+                }
+            }
+            Err(_) => resolve_or_generate_session_secret(),
+        };
 
         let vw_container_name_raw = env::var("VW_CONTAINER_NAME")
             .unwrap_or_else(|_| "vaultwarden".to_string());
@@ -141,4 +183,16 @@ mod tests {
         assert_eq!(clean_env_value("s3cr3t#123! # comment"), "s3cr3t#123!");
         assert_eq!(clean_env_value("# full comment line"), "");
     }
+
+    #[test]
+    fn test_resolve_or_generate_session_secret() {
+        let sec = resolve_or_generate_session_secret();
+        assert!(sec.len() >= 32);
+        assert_ne!(sec, "dev_insecure_secret_key_change_in_prod_1234567890");
+        // Verify subsequent call loads the same persisted secret
+        let sec2 = resolve_or_generate_session_secret();
+        assert_eq!(sec, sec2);
+        let _ = std::fs::remove_file(".session_secret");
+    }
 }
+

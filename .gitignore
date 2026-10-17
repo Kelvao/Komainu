@@ -2,3 +2,5 @@
 .env
 .hallmark/
 .audit/
+.session_secret*
+
