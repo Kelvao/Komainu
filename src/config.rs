@@ -39,15 +39,17 @@ pub(crate) fn clean_env_value(val: &str) -> String {
 }
 
 pub(crate) fn resolve_or_generate_session_secret() -> String {
-    let secret_file = std::path::Path::new(".session_secret");
-    if secret_file.exists() {
-        if let Ok(content) = std::fs::read_to_string(secret_file) {
+    resolve_or_generate_session_secret_at(std::path::Path::new(".session_secret"))
+}
+
+pub(crate) fn resolve_or_generate_session_secret_at(secret_file: &std::path::Path) -> String {
+    if secret_file.exists()
+        && let Ok(content) = std::fs::read_to_string(secret_file) {
             let trimmed = content.trim();
             if trimmed.len() >= 32 {
                 return trimmed.to_string();
             }
         }
-    }
 
     use ring::rand::{SecureRandom, SystemRandom};
     let rng = SystemRandom::new();
@@ -55,17 +57,17 @@ pub(crate) fn resolve_or_generate_session_secret() -> String {
     if rng.fill(&mut bytes).is_ok() {
         let hex_secret = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
         let _ = (|| -> Result<(), std::io::Error> {
-            let tmp_path = std::path::Path::new(".session_secret.tmp");
-            std::fs::write(tmp_path, &hex_secret)?;
+            let tmp_path = secret_file.with_extension("tmp");
+            std::fs::write(&tmp_path, &hex_secret)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(tmp_path, std::fs::Permissions::from_mode(0o600));
+                let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
             }
-            std::fs::rename(tmp_path, secret_file)?;
+            std::fs::rename(&tmp_path, secret_file)?;
             Ok(())
         })();
-        tracing::info!("SESSION_SECRET was not provided: generated secure unique secret in .session_secret");
+        tracing::info!("SESSION_SECRET was not provided: generated secure unique secret in {:?}", secret_file);
         return hex_secret;
     }
 
@@ -186,13 +188,14 @@ mod tests {
 
     #[test]
     fn test_resolve_or_generate_session_secret() {
-        let sec = resolve_or_generate_session_secret();
+        let temp_file = std::env::temp_dir().join(format!("komainu_secret_test_{}.secret", uuid::Uuid::new_v4()));
+        let sec = resolve_or_generate_session_secret_at(&temp_file);
         assert!(sec.len() >= 32);
         assert_ne!(sec, "dev_insecure_secret_key_change_in_prod_1234567890");
         // Verify subsequent call loads the same persisted secret
-        let sec2 = resolve_or_generate_session_secret();
+        let sec2 = resolve_or_generate_session_secret_at(&temp_file);
         assert_eq!(sec, sec2);
-        let _ = std::fs::remove_file(".session_secret");
+        let _ = std::fs::remove_file(&temp_file);
     }
 }
 

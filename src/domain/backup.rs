@@ -178,10 +178,18 @@ pub fn encrypt_file_aes_256_gcm(
 
     let mut src_file = File::open(src_path)
         .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?;
-    let file_len = src_file
+    let raw_len = src_file
         .metadata()
         .map_err(|e| BackupError::IoError(format!("Failed reading file metadata: {e}")))?
-        .len() as usize;
+        .len();
+
+    const MAX_SAFE_BACKUP_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GB safety ceiling
+    if raw_len > MAX_SAFE_BACKUP_BYTES {
+        return Err(BackupError::EncryptionError(format!(
+            "Backup file size ({raw_len} bytes) exceeds maximum supported single-pass limit ({MAX_SAFE_BACKUP_BYTES} bytes)"
+        )));
+    }
+    let file_len = raw_len as usize;
 
     let mut in_out = Vec::with_capacity(file_len);
     src_file
@@ -265,6 +273,18 @@ pub fn decrypt_file_aes_256_gcm(
 
         let mut in_file = File::open(src_path)
             .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
+
+        let raw_len = in_file
+            .metadata()
+            .map_err(|e| BackupError::IoError(format!("Failed reading encrypted file metadata: {e}")))?
+            .len();
+
+        const MAX_SAFE_BACKUP_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+        if raw_len > MAX_SAFE_BACKUP_BYTES + (16 + 12 + 16) {
+            return Err(BackupError::EncryptionError(format!(
+                "Encrypted backup size ({raw_len} bytes) exceeds safety limit ({MAX_SAFE_BACKUP_BYTES} bytes)"
+            )));
+        }
 
         let mut header = [0u8; 16 + 12 + 16];
         in_file
