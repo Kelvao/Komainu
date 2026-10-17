@@ -19,7 +19,7 @@ pub fn render_dashboard_page(i18n: &Translations, fragment: &str) -> String {
 <body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
     {navbar}
 
-    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
+    <main class="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div id="dashboard-content" hx-get="/api/dashboard-fragment" hx-trigger="every 2s" hx-swap="innerHTML">
             {fragment}
         </div>
@@ -177,25 +177,25 @@ pub async fn render_dashboard_fragment(
     {error_banner}
 
     <!-- SEÇÃO 1: CONTAINER VAULTWARDEN -->
-    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/[0.06]">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-4 sm:pb-5 border-b border-white/[0.06]">
             <div>
-                <div class="flex items-center gap-3">
-                    <h2 class="text-xl font-display font-bold tracking-tight text-white">{instance_title}</h2>
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <h2 class="text-lg sm:text-xl font-display font-bold tracking-tight text-white">{instance_title}</h2>
                     {status_badge}
                 </div>
-                <p class="text-xs text-slate-400 mt-1 font-mono">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
+                <p class="text-xs text-slate-400 mt-1 font-mono break-all sm:break-normal">{image_prefix} <span class="text-slate-300 font-semibold">{image_name}</span> &bull; {started_prefix} <span class="text-slate-300 font-semibold">{uptime_str}</span></p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06] w-full sm:w-auto">
+            <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-canvas/90 rounded-lg border border-white/[0.06] w-full sm:w-auto">
                 <button 
                     hx-post="/api/container/start" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_start}
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-white border border-rose-400/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
                     <span>{btn_start}</span>
                 </button>
@@ -204,7 +204,7 @@ pub async fn render_dashboard_fragment(
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     {disabled_stop}
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-950/80 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-rose-300 hover:text-white border border-rose-500/30 shadow-sm">
+                    class="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center gap-1.5 bg-surface-elevated hover:bg-rose-950/80 active:translate-y-px disabled:opacity-30 disabled:pointer-events-none text-rose-300 hover:text-white border border-rose-500/30 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.5 4.5A1.5 1.5 0 016 3h8a1.5 1.5 0 011.5 1.5v11a1.5 1.5 0 01-1.5 1.5H6a1.5 1.5 0 01-1.5-1.5v-11z" clip-rule="evenodd"/></svg>
                     <span>{btn_stop}</span>
                 </button>
@@ -212,7 +212,7 @@ pub async fn render_dashboard_fragment(
                     hx-post="/api/container/restart" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
+                    class="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <span>{btn_restart}</span>
                 </button>
@@ -220,7 +220,7 @@ pub async fn render_dashboard_fragment(
                     hx-post="/api/container/update" 
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
+                    class="px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     <span>{btn_update}</span>
                 </button>
@@ -229,7 +229,7 @@ pub async fn render_dashboard_fragment(
                     hx-target="#dashboard-content" 
                     hx-swap="innerHTML"
                     hx-confirm="{confirm_rebuild}"
-                    class="px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center flex-1 sm:flex-initial gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
+                    class="col-span-2 sm:col-span-1 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium font-sans transition-colors duration-150 flex items-center justify-center gap-1.5 bg-surface-elevated hover:bg-rose-500/15 active:translate-y-px text-slate-200 hover:text-white border border-white/[0.08] hover:border-rose-500/40 shadow-sm">
                     <svg class="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     <span>{btn_rebuild}</span>
                 </button>
@@ -277,53 +277,53 @@ pub async fn render_dashboard_fragment(
             <div class="flex-1 h-px bg-white/[0.04]"></div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <!-- Métrica CPU Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-4 sm:p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{cpu_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{cpu_usage:.1}%</span>
+                    <div class="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400 truncate">{cpu_title}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 shrink-0">{cpu_usage:.1}%</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {cpu_usage:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
+                <div class="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
                     <span class="text-rose-400 font-semibold tabular-nums">{cpu_usage:.1}%</span>
                 </div>
             </div>
 
             <!-- Métrica RAM Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-4 sm:p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{ram_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{ram_used} / {ram_total} MB</span>
+                    <div class="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400 truncate">{ram_title}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 shrink-0">{ram_used} / {ram_total} MB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {ram_pct:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
+                <div class="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
                     <span class="text-rose-400 font-semibold tabular-nums">{ram_pct:.1}% {occupied_suffix}</span>
                 </div>
             </div>
 
             <!-- Métrica Disco Host -->
-            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
+            <div class="bg-surface/95 border border-white/[0.08] rounded-xl p-4 sm:p-5 shadow-xl hover:border-rose-500/30 transition-colors duration-150 flex flex-col justify-between">
                 <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400">{disk_title}</span>
-                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">{disk_used} / {disk_total} GB</span>
+                    <div class="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                        <span class="text-xs font-mono uppercase tracking-wider text-slate-400 truncate">{disk_title}</span>
+                        <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 shrink-0">{disk_used} / {disk_total} GB</span>
                     </div>
                     <div class="w-full bg-canvas h-2 rounded-full overflow-hidden border border-white/[0.04]">
                         <div class="bg-rose-500 h-2 rounded-full transition-[width] duration-500 ease-out" style="width: {disk_pct:.1}%"></div>
                     </div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
+                <div class="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] font-mono">
                     <span class="text-slate-500">{host_label}</span>
                     <span class="text-rose-400 font-semibold tabular-nums">{disk_pct:.1}% {occupied_suffix}</span>
                 </div>

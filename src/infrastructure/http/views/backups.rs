@@ -19,7 +19,7 @@ pub fn render_backups_page(i18n: &Translations, fragment: &str) -> String {
 <body class="text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-600 selection:text-white">
     {navbar}
 
-    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:py-8">
+    <main class="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div id="backups-content" hx-get="/api/backups/fragment" hx-trigger="backupCompleted from:body" hx-swap="innerHTML">
             {fragment}
         </div>
@@ -263,13 +263,13 @@ pub async fn render_backups_fragment(
             let safe_filename = super::html_escape(&file.name);
             history_rows.push_str(&format!(
                 r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
-                    <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
-                    <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
-                    <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
-                    <td class="py-3 px-3 whitespace-nowrap">
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-white font-medium max-w-[140px] sm:max-w-none truncate sm:break-all" title="{filename}">{filename}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 whitespace-nowrap">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold border bg-emerald-500/10 text-emerald-400 border-emerald-500/25">{status_remote}</span>
                     </td>
-                    <td class="py-3 px-3 text-right whitespace-nowrap">
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-right whitespace-nowrap">
                         <a href="/api/backups/download?fileid={fileid}&filename={enc_name}" download class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 hover:text-white border border-rose-500/30 hover:border-rose-500/50 text-[11px] font-mono font-medium transition-colors shadow-sm">
                             <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                             <span>{btn_download}</span>
@@ -300,13 +300,13 @@ pub async fn render_backups_fragment(
             let safe_filename = super::html_escape(&rec.filename);
             history_rows.push_str(&format!(
                 r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
-                    <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
-                    <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
-                    <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
-                    <td class="py-3 px-3 whitespace-nowrap">
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-white font-medium max-w-[140px] sm:max-w-none truncate sm:break-all" title="{filename}">{filename}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 whitespace-nowrap">
                         <span class="px-2 py-0.5 rounded text-[11px] font-semibold border {badge_color}">{badge}</span>
                     </td>
-                    <td class="py-3 px-3 text-right text-slate-500 whitespace-nowrap">-</td>
+                    <td class="py-2.5 sm:py-3 px-2.5 sm:px-3 text-right text-slate-500 whitespace-nowrap">-</td>
                 </tr>"##,
                 ts = rec.timestamp,
                 filename = safe_filename,
@@ -351,7 +351,7 @@ pub async fn render_backups_fragment(
             crate::domain::backup::PCloudRegion::US => "US",
         };
         format!(
-            r##"<div class="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            r##"<div class="p-3 sm:p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     <div>
@@ -359,11 +359,11 @@ pub async fn render_backups_fragment(
                         <p class="text-[11px] text-slate-400 font-sans">Token OAuth ativo e pronto para backups.</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" onclick="startPCloudOAuth()" class="px-3 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-xs font-mono text-slate-200 border border-white/[0.08] transition-colors flex items-center gap-1.5">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <button type="button" onclick="startPCloudOAuth()" class="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-xs font-mono text-slate-200 border border-white/[0.08] transition-colors flex items-center justify-center gap-1.5">
                         <span>🔄</span> <span>{}</span>
                     </button>
-                    <button type="button" hx-post="/api/backups/pcloud/disconnect" hx-target="#backups-content" hx-swap="innerHTML" class="px-3 py-1.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-xs font-mono text-rose-300 border border-rose-500/20 transition-colors flex items-center gap-1.5">
+                    <button type="button" hx-post="/api/backups/pcloud/disconnect" hx-target="#backups-content" hx-swap="innerHTML" class="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-xs font-mono text-rose-300 border border-rose-500/20 transition-colors flex items-center justify-center gap-1.5">
                         <span>✕</span> <span>{}</span>
                     </button>
                 </div>
@@ -375,7 +375,7 @@ pub async fn render_backups_fragment(
         )
     } else {
         format!(
-            r##"<div class="p-3.5 rounded-lg bg-white/[0.02] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            r##"<div class="p-3 sm:p-3.5 rounded-lg bg-white/[0.02] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
                     <div>
@@ -383,8 +383,8 @@ pub async fn render_backups_fragment(
                         <p class="text-[11px] text-slate-400 font-sans">Faça login com seu app pCloud para vincular o acesso aos backups.</p>
                     </div>
                 </div>
-                <div>
-                    <button type="button" onclick="startPCloudOAuth()" class="w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-semibold font-sans bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white shadow-md flex items-center justify-center gap-2 transition-all">
+                <div class="w-full sm:w-auto">
+                    <button type="button" onclick="startPCloudOAuth()" class="w-full sm:w-auto px-4 py-2.5 rounded-lg text-xs font-semibold font-sans bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white shadow-md flex items-center justify-center gap-2 transition-all">
                         <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                         <span>{}</span>
                     </button>
@@ -428,16 +428,16 @@ pub async fn render_backups_fragment(
     {alert_banner}
 
     <!-- CARD 1: STATUS DO AGENDAMENTO E EXECUÇÃO RÁPIDA -->
-    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-                <div class="flex items-center gap-3">
-                    <h2 class="text-xl font-display font-bold tracking-tight text-white">{backups_title}</h2>
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <h2 class="text-lg sm:text-xl font-display font-bold tracking-tight text-white">{backups_title}</h2>
                     {status_badge}
                 </div>
-                <p class="text-xs text-slate-400 font-mono mt-1.5 flex items-center gap-2">
+                <p class="text-xs text-slate-400 font-mono mt-1.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
                     <span>{next_run_label}</span>
                     <strong class="text-rose-300">{next_run_val}</strong>
                 </p>
@@ -458,7 +458,7 @@ pub async fn render_backups_fragment(
     </div>
 
     <!-- CARD 2: CONFIGURAÇÕES DA ROTINA, CRON E PCLOUD -->
-    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
         <div class="mb-5 pb-4 border-b border-white/[0.06]">
@@ -575,7 +575,7 @@ pub async fn render_backups_fragment(
             </div>
 
             <div class="pt-4 flex justify-end">
-                <button type="submit" class="px-5 py-2.5 rounded-lg text-xs font-semibold font-sans transition-all duration-150 flex items-center gap-2 bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white border border-rose-400/30 shadow-md">
+                <button type="submit" class="w-full sm:w-auto px-5 py-2.5 rounded-lg text-xs font-semibold font-sans transition-all duration-150 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 active:translate-y-px text-white border border-rose-400/30 shadow-md">
                     <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                     <span>{btn_save_config}</span>
                 </button>
@@ -584,19 +584,19 @@ pub async fn render_backups_fragment(
     </div>
 
     <!-- CARD 3: HISTÓRICO DE BACKUPS -->
-    <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+    <div class="bg-surface border border-rose-500/20 rounded-xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
         <div class="mb-4 pb-3 border-b border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <h3 class="text-lg font-display font-bold tracking-tight text-white">{history_section}</h3>
             </div>
-            <div class="flex items-center gap-2 self-end sm:self-auto">
+            <div class="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
                 <input type="hidden" id="backup-sort-field-input" name="sort" value="{sort_field}">
                 <input type="hidden" id="backup-sort-order-input" name="order" value="{sort_order}">
                 <div class="flex items-center gap-1.5">
                     <label for="backup-sort-select" class="text-slate-400 text-xs font-mono hidden sm:inline">{sort_by}:</label>
-                    <select id="backup-sort-select" onchange="onBackupSortSelect(this.value)" class="px-2.5 py-1 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-200 text-xs font-mono cursor-pointer transition-colors">
+                    <select id="backup-sort-select" onchange="onBackupSortSelect(this.value)" class="px-2.5 py-1.5 sm:py-1 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-200 text-xs font-mono cursor-pointer transition-colors">
                         <option value="date-desc"{sel_date_desc}>{sort_date_desc}</option>
                         <option value="date-asc"{sel_date_asc}>{sort_date_asc}</option>
                         <option value="size-desc"{sel_size_desc}>{sort_size_desc}</option>
@@ -611,30 +611,30 @@ pub async fn render_backups_fragment(
             </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <table id="backup-history-table" class="w-full text-left border-collapse" data-sort-field="{sort_field}" data-sort-order="{sort_order}">
                 <thead>
                     <tr class="border-b border-white/[0.08] text-[11px] font-mono uppercase text-slate-400">
-                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('date')" title="{table_date}">
+                        <th class="py-2.5 px-2.5 sm:px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('date')" title="{table_date}">
                             <div class="inline-flex items-center gap-1.5">
                                 <span>{table_date}</span>
                                 <span id="sort-icon-date" class="{date_icon_class}">{date_icon_symbol}</span>
                             </div>
                         </th>
-                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('name')" title="{table_filename}">
+                        <th class="py-2.5 px-2.5 sm:px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('name')" title="{table_filename}">
                             <div class="inline-flex items-center gap-1.5">
                                 <span>{table_filename}</span>
                                 <span id="sort-icon-name" class="{name_icon_class}">{name_icon_symbol}</span>
                             </div>
                         </th>
-                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('size')" title="{table_size}">
+                        <th class="py-2.5 px-2.5 sm:px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('size')" title="{table_size}">
                             <div class="inline-flex items-center gap-1.5">
                                 <span>{table_size}</span>
                                 <span id="sort-icon-size" class="{size_icon_class}">{size_icon_symbol}</span>
                             </div>
                         </th>
-                        <th class="py-2.5 px-3">{table_status}</th>
-                        <th class="py-2.5 px-3 text-right">{table_action}</th>
+                        <th class="py-2.5 px-2.5 sm:px-3">{table_status}</th>
+                        <th class="py-2.5 px-2.5 sm:px-3 text-right">{table_action}</th>
                     </tr>
                 </thead>
                 <tbody>
