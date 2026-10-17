@@ -4,22 +4,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "fs", "io-util", "net", "time", "sync"] }
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie", "cookie-signed"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 dotenvy = "0.15"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-serde = { version = "1.0", features = ["derive"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = "1.0"
 bollard = "0.18"
 libc = "0.2"
 webauthn-rs = "0.5"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", default-features = false, features = ["v4"] }
 sha2 = "0.10"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
-futures-util = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 openssl = { version = "0.10", features = ["vendored"] }
 time = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
@@ -39,3 +39,4 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+overflow-checks = false
