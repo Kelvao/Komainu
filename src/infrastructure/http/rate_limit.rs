@@ -13,6 +13,8 @@ pub struct RateLimiter {
     window_duration: Duration,
 }
 
+const MAX_RATE_LIMIT_ENTRIES: usize = 1000;
+
 impl RateLimiter {
     pub fn new(max_requests: u32, window_duration: Duration) -> Self {
         Self {
@@ -22,11 +24,32 @@ impl RateLimiter {
         }
     }
 
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.records.lock().unwrap().len()
+    }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn check(&self, key: &str) -> bool {
         let mut map = self.records.lock().unwrap();
         let now = Instant::now();
-        if map.len() > 1000 {
+        if map.len() >= MAX_RATE_LIMIT_ENTRIES {
             map.retain(|_, (_, start)| now.duration_since(*start) < self.window_duration);
+            while map.len() >= MAX_RATE_LIMIT_ENTRIES {
+                if let Some(oldest_key) = map
+                    .iter()
+                    .min_by_key(|(_, (_, start))| *start)
+                    .map(|(k, _)| k.clone())
+                {
+                    map.remove(&oldest_key);
+                } else {
+                    break;
+                }
+            }
         }
         let entry = map.entry(key.to_string()).or_insert((0, now));
         if now.duration_since(entry.1) >= self.window_duration {

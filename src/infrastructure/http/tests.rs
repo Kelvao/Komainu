@@ -1030,6 +1030,15 @@ async fn test_rate_limiter_blocks_excessive_requests() {
 }
 
 #[tokio::test]
+async fn test_rate_limiter_caps_max_entries() {
+    let limiter = crate::infrastructure::http::rate_limit::RateLimiter::new(10, std::time::Duration::from_secs(60));
+    for i in 0..1050 {
+        limiter.check(&format!("10.0.{}.{}", i / 256, i % 256));
+    }
+    assert!(limiter.len() <= 1000);
+}
+
+#[tokio::test]
 async fn test_csrf_origin_validation() {
     let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
     let state = create_test_app_state(auth_service, "pt-BR");
