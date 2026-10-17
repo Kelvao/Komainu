@@ -260,6 +260,11 @@ impl BackupService {
                 }
             }
         };
+        let _temp_snapshot_guard = if is_temp_snapshot {
+            Some(TempFileGuard(sqlite_file_path.clone()))
+        } else {
+            None
+        };
 
         // 3. Compactar no arquivo ZIP gravando em arquivo temporário no disco
         let temp_zip_path = komainu_temp_dir().join(format!("vw_backup_{}.zip", record_id));
@@ -276,9 +281,6 @@ impl BackupService {
         .map_err(|e| BackupError::IoError(format!("Zip packaging task failed: {e}")))?;
 
         if let Err(e) = zip_res {
-            if is_temp_snapshot {
-                let _ = fs::remove_file(&sqlite_file_path);
-            }
             self.record_failure(&record_id, timestamp_now.timestamp() as u64, &filename, &e.to_string(), start_time.elapsed().as_secs()).await;
             return Err(e);
         }
