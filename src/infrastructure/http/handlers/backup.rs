@@ -444,8 +444,23 @@ pub async fn backup_download_handler(
                 .into_response();
         }
     };
+    struct TempFileStream {
+        stream: tokio_util::io::ReaderStream<tokio::fs::File>,
+        _guard: crate::domain::backup::TempFileGuard,
+    }
+
+    impl futures_util::Stream for TempFileStream {
+        type Item = Result<bytes::Bytes, std::io::Error>;
+
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            std::pin::Pin::new(&mut self.stream).poll_next(cx)
+        }
+    }
+
     let file_size = file.metadata().await.map(|m| m.len()).unwrap_or(0);
-    let _ = std::fs::remove_file(&temp_dec_path);
 
     let raw_name = query.filename.unwrap_or_else(|| format!("backup_{}.zip", query.fileid));
     let mut clean_name = raw_name
@@ -465,7 +480,10 @@ pub async fn backup_download_handler(
 
     let content_disposition = format!("attachment; filename=\"{}\"", safe_name);
 
-    let stream = tokio_util::io::ReaderStream::new(file);
+    let stream = TempFileStream {
+        stream: tokio_util::io::ReaderStream::new(file),
+        _guard,
+    };
     let body = axum::body::Body::from_stream(stream);
 
     let mut response = (
