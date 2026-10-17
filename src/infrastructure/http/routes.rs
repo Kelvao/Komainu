@@ -31,16 +31,28 @@ pub async fn csrf_protection_middleware(
     if request.method() == axum::http::Method::POST {
         let expected = state.rp_origin.trim_end_matches('/');
         if !expected.is_empty() {
-            if let Some(origin) = request.headers().get("origin").and_then(|v| v.to_str().ok()) {
+            let has_origin = request.headers().get("origin").and_then(|v| v.to_str().ok());
+            let has_referer = request.headers().get("referer").and_then(|v| v.to_str().ok());
+            let sec_fetch_site = request.headers().get("sec-fetch-site").and_then(|v| v.to_str().ok());
+            let is_hx = request.headers().get("hx-request").and_then(|v| v.to_str().ok()) == Some("true");
+
+            if let Some(origin) = has_origin {
                 if origin.trim_end_matches('/') != expected {
                     tracing::warn!("CSRF rejected: Origin '{origin}' does not match expected '{expected}'");
                     return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Origin").into_response();
                 }
-            } else if let Some(referer) = request.headers().get("referer").and_then(|v| v.to_str().ok())
-                && !referer.starts_with(expected) {
+            } else if let Some(referer) = has_referer {
+                if !referer.starts_with(expected) {
                     tracing::warn!("CSRF rejected: Referer '{referer}' does not match expected '{expected}'");
                     return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: untrusted Referer").into_response();
                 }
+            } else if sec_fetch_site == Some("cross-site") {
+                tracing::warn!("CSRF rejected: Sec-Fetch-Site is cross-site");
+                return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: cross-site request").into_response();
+            } else if !is_hx && (request.uri().path().starts_with("/api/container") || request.uri().path() == "/api/backups/run") {
+                tracing::warn!("CSRF rejected: Missing Origin and Referer on sensitive POST request '{}'", request.uri().path());
+                return (axum::http::StatusCode::FORBIDDEN, "Cross-site request rejected: missing Origin or Referer").into_response();
+            }
         }
     }
     next.run(request).await

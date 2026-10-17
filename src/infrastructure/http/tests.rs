@@ -897,6 +897,7 @@ async fn test_backup_api_endpoints() {
         .uri("/api/backups/run")
         .method("POST")
         .header("cookie", cookie_str)
+        .header("origin", "http://localhost:3000")
         .body(Body::empty())
         .unwrap();
     let res_run = router.clone().oneshot(req_run).await.unwrap();
@@ -1071,8 +1072,37 @@ async fn test_csrf_origin_validation() {
         .header("origin", "http://localhost:3000")
         .body(Body::empty())
         .unwrap();
-    let res_trusted = router.oneshot(req_trusted).await.unwrap();
+    let res_trusted = router.clone().oneshot(req_trusted).await.unwrap();
     assert_ne!(res_trusted.status(), StatusCode::FORBIDDEN);
+
+    // 4. Missing origin and referer on sensitive container POST -> 403 Forbidden (SEC-14)
+    let req_missing = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .body(Body::empty())
+        .unwrap();
+    let res_missing = router.clone().oneshot(req_missing).await.unwrap();
+    assert_eq!(res_missing.status(), StatusCode::FORBIDDEN);
+
+    // 5. Missing origin but with HTMX header -> allowed through CSRF check
+    let req_hx = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .header("hx-request", "true")
+        .body(Body::empty())
+        .unwrap();
+    let res_hx = router.clone().oneshot(req_hx).await.unwrap();
+    assert_ne!(res_hx.status(), StatusCode::FORBIDDEN);
+
+    // 6. Sec-Fetch-Site cross-site -> 403 Forbidden (SEC-14)
+    let req_cross_site = Request::builder()
+        .uri("/api/container/stop")
+        .method("POST")
+        .header("sec-fetch-site", "cross-site")
+        .body(Body::empty())
+        .unwrap();
+    let res_cross_site = router.oneshot(req_cross_site).await.unwrap();
+    assert_eq!(res_cross_site.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
