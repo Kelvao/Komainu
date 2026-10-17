@@ -44,9 +44,8 @@ pub fn start_cron_loop(service: Arc<BackupService>) {
 
             // Check if current minute should trigger using host local time
             let start_of_this_min = now_local
-                .date_naive()
-                .and_hms_opt(now_local.hour(), now_local.minute(), 0)
-                .and_then(|naive| naive.and_local_timezone(Local).single())
+                .with_second(0)
+                .and_then(|t| t.with_nanosecond(0))
                 .unwrap_or(now_local);
             let mut should_run = false;
 
