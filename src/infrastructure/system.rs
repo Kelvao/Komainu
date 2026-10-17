@@ -94,7 +94,12 @@ fn read_disk_space() -> (u64, u64) {
     #[cfg(unix)]
     unsafe {
         let mut stat: libc::statvfs = std::mem::zeroed();
-        let path = std::ffi::CString::new("/").unwrap();
+        let target_path = std::env::var("VW_DATA_PATH")
+            .ok()
+            .filter(|p| std::path::Path::new(p).exists())
+            .unwrap_or_else(|| "/".to_string());
+        let path = std::ffi::CString::new(target_path)
+            .unwrap_or_else(|_| std::ffi::CString::new("/").unwrap());
         if libc::statvfs(path.as_ptr(), &mut stat) == 0 {
             let block_size = if stat.f_frsize > 0 {
                 stat.f_frsize as u64
