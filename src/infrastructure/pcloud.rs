@@ -313,6 +313,14 @@ impl PCloudClientPort for HttpPCloudClient {
                 .hosts
                 .and_then(|h| h.into_iter().next())
                 .ok_or_else(|| BackupError::PCloudUploadFailed("No host returned for file download".to_string()))?;
+
+            if !is_trusted_pcloud_host(&host) {
+                tracing::warn!("Untrusted pCloud download host rejected: {host}");
+                return Err(BackupError::PCloudUploadFailed(format!(
+                    "Untrusted pCloud download host '{host}' rejected"
+                )));
+            }
+
             let path = link_resp
                 .path
                 .ok_or_else(|| BackupError::PCloudUploadFailed("No path returned for file download".to_string()))?;
@@ -398,9 +406,29 @@ pub(crate) fn urlencoding(val: &str) -> String {
     out
 }
 
+pub(crate) fn is_trusted_pcloud_host(host: &str) -> bool {
+    let clean = host.split(':').next().unwrap_or("").trim().to_lowercase();
+    clean == "pcloud.com"
+        || clean.ends_with(".pcloud.com")
+        || clean == "pcloud.eu"
+        || clean.ends_with(".pcloud.eu")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_trusted_pcloud_host() {
+        assert!(is_trusted_pcloud_host("api.pcloud.com"));
+        assert!(is_trusted_pcloud_host("eapi.pcloud.com"));
+        assert!(is_trusted_pcloud_host("bin-us-123.pcloud.com:443"));
+        assert!(is_trusted_pcloud_host("api.pcloud.eu"));
+        assert!(!is_trusted_pcloud_host("evil-pcloud.com"));
+        assert!(!is_trusted_pcloud_host("pcloud.com.attacker.com"));
+        assert!(!is_trusted_pcloud_host("169.254.169.254"));
+        assert!(!is_trusted_pcloud_host("localhost"));
+    }
 
     #[test]
     fn test_normalize_folder_param() {
