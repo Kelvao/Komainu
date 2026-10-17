@@ -73,4 +73,15 @@ pub async fn htmx_script_handler() -> impl IntoResponse {
     )
 }
 
+pub async fn favicon_svg_handler() -> impl IntoResponse {
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "image/svg+xml"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        crate::infrastructure::http::icon::KOMAINU_FAVICON_SVG,
+    )
+}
+
+
 

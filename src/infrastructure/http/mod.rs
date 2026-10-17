@@ -8,11 +8,14 @@ use crate::domain::container::ContainerPort;
 use crate::domain::system::SystemMonitorPort;
 
 pub mod handlers;
+pub mod icon;
 pub mod rate_limit;
 pub mod routes;
 pub mod session;
 pub mod theme;
 pub mod views;
+
+pub use icon::*;
 
 #[cfg(test)]
 mod tests;

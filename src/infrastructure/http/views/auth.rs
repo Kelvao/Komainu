@@ -42,8 +42,8 @@ pub fn render_login_page(i18n: &crate::i18n::Translations, has_admin: bool) -> S
             <!-- Top Header: Brand & Language -->
             <div class="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-white/[0.06]">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-base sm:text-lg text-rose-400 shrink-0">
-                        狛
+                    <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center p-1 text-rose-400 shrink-0">
+                        {logo_svg}
                     </div>
                     <div>
                         <span class="font-display font-bold text-sm sm:text-base text-white tracking-tight leading-none block">Komainu</span>
@@ -306,6 +306,7 @@ pub fn render_login_page(i18n: &crate::i18n::Translations, has_admin: bool) -> S
         next_lang = next_lang,
         lang_btn_label = lang_btn_label,
         lang_title = lang_title,
+        logo_svg = crate::infrastructure::http::icon::KOMAINU_ICON_SVG,
     )
 }
 
@@ -354,8 +355,8 @@ pub fn render_qr_login_page(i18n: &crate::i18n::Translations, token_str: &str) -
 
         <div id="auth-box">
             <div class="flex items-center gap-3 mb-5">
-                <div class="w-10 h-10 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-xl text-rose-400 shrink-0">
-                    狛
+                <div class="w-10 h-10 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center p-1.5 text-rose-400 shrink-0">
+                    {logo_svg}
                 </div>
                 <div>
                     <h1 class="text-lg sm:text-xl font-display font-bold tracking-tight text-white">{mobile_title}</h1>
@@ -456,6 +457,7 @@ pub fn render_qr_login_page(i18n: &crate::i18n::Translations, token_str: &str) -
         auth_error = i18n.login.auth_error,
         default_error = i18n.login.default_error,
         token = token_str,
+        logo_svg = crate::infrastructure::http::icon::KOMAINU_ICON_SVG,
     )
 }
 
@@ -477,8 +479,8 @@ pub fn render_register_page(i18n: &crate::i18n::Translations, token: &str) -> St
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
 
         <div class="flex items-center gap-2.5 mb-5 pb-4 border-b border-white/[0.06]">
-            <div class="w-8 h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg text-rose-400 shrink-0">
-                狛
+            <div class="w-8 h-8 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center p-1 text-rose-400 shrink-0">
+                {logo_svg}
             </div>
             <div>
                 <span class="font-display font-bold text-base text-white tracking-tight leading-none block">Komainu</span>
@@ -567,6 +569,7 @@ pub fn render_register_page(i18n: &crate::i18n::Translations, token: &str) -> St
         save_error = i18n.register.save_error,
         success_alert = i18n.register.success_alert,
         default_error = i18n.register.default_error,
+        logo_svg = crate::infrastructure::http::icon::KOMAINU_ICON_SVG,
     )
 }
 

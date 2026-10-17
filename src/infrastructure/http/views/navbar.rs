@@ -37,8 +37,8 @@ pub fn render_navbar(
         <div class="max-w-6xl mx-auto px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
             <div class="flex items-center gap-3 sm:gap-6">
                 <a href="{home_url}" class="flex items-center gap-2.5 sm:gap-3 group">
-                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center font-display font-bold text-lg sm:text-xl text-rose-400 shrink-0 group-hover:border-rose-500/50 transition-colors">
-                        狛
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-rose-600/10 border border-rose-500/30 flex items-center justify-center p-1 sm:p-1.5 text-rose-400 shrink-0 group-hover:border-rose-500/50 group-hover:text-rose-300 transition-colors">
+                        {logo_svg}
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
@@ -94,6 +94,7 @@ pub fn render_navbar(
         lang_btn_label = lang_btn_label,
         lang_title = lang_title,
         logout = i18n.common.logout,
+        logo_svg = crate::infrastructure::http::icon::KOMAINU_ICON_SVG,
     )
 }
 

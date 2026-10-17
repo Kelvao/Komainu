@@ -73,6 +73,8 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         // Rotas públicas
         .route("/health", get(health_check))
+        .route("/favicon.ico", get(favicon_svg_handler))
+        .route("/assets/favicon.svg", get(favicon_svg_handler))
         .route("/assets/webauthn-json.js", get(webauthn_json_script_handler))
         .route("/assets/htmx.js", get(htmx_script_handler))
         .route("/assets/theme.css", get(theme_css_asset_handler))

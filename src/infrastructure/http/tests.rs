@@ -243,6 +243,38 @@ async fn test_theme_css_asset_route() {
 }
 
 #[tokio::test]
+async fn test_favicon_svg_asset_route() {
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    let router = create_router(create_test_app_state(auth_service, "en"));
+
+    let req = Request::builder()
+        .uri("/assets/favicon.svg")
+        .body(Body::empty())
+        .unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers().get("content-type").unwrap(),
+        "image/svg+xml"
+    );
+    assert_eq!(
+        res.headers().get("cache-control").unwrap(),
+        "public, max-age=31536000, immutable"
+    );
+
+    let req_ico = Request::builder()
+        .uri("/favicon.ico")
+        .body(Body::empty())
+        .unwrap();
+    let res_ico = router.oneshot(req_ico).await.unwrap();
+    assert_eq!(res_ico.status(), StatusCode::OK);
+    assert_eq!(
+        res_ico.headers().get("content-type").unwrap(),
+        "image/svg+xml"
+    );
+}
+
+#[tokio::test]
 async fn test_htmx_asset_route() {
     let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
     let router = create_router(create_test_app_state(auth_service, "en"));
