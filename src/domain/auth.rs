@@ -47,6 +47,12 @@ pub trait CredentialStorePort: Send + Sync {
     fn load_credentials(&self) -> BoxFuture<'_, Result<Vec<Passkey>, AuthError>>;
     fn save_credential(&self, passkey: Passkey) -> BoxFuture<'_, Result<(), AuthError>>;
     fn has_registered_admin(&self) -> BoxFuture<'_, bool>;
+    fn get_session_tag(&self) -> BoxFuture<'_, Result<Option<String>, AuthError>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn set_session_tag(&self, _tag: &str) -> BoxFuture<'_, Result<(), AuthError>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 #[cfg(test)]

@@ -90,18 +90,25 @@ impl AuthService {
         *self.cached_credential_tag.write().unwrap() = Some(tag);
     }
 
-    pub fn invalidate_sessions(&self) {
+    pub async fn invalidate_sessions(&self) {
         let new_tag = Uuid::new_v4().to_string();
-        *self.cached_credential_tag.write().unwrap() = Some(new_tag);
+        *self.cached_credential_tag.write().unwrap() = Some(new_tag.clone());
+        let _ = self.store.set_session_tag(&new_tag).await;
     }
 
     pub async fn init_credential_tag(&self) {
+        if let Ok(Some(persisted)) = self.store.get_session_tag().await {
+            *self.cached_credential_tag.write().unwrap() = Some(persisted);
+            return;
+        }
+
         if let Ok(keys) = self.store.load_credentials().await
             && let Some(first) = keys.first() {
                 use sha2::{Digest, Sha256};
                 let hash = Sha256::digest(first.cred_id().as_ref());
                 let tag = format!("{:016x}", u64::from_be_bytes(hash[..8].try_into().unwrap()));
-                *self.cached_credential_tag.write().unwrap() = Some(tag);
+                *self.cached_credential_tag.write().unwrap() = Some(tag.clone());
+                let _ = self.store.set_session_tag(&tag).await;
             }
     }
 
@@ -161,7 +168,8 @@ impl AuthService {
         use sha2::{Digest, Sha256};
         let hash = Sha256::digest(passkey.cred_id().as_ref());
         let tag = format!("{:016x}", u64::from_be_bytes(hash[..8].try_into().unwrap()));
-        *self.cached_credential_tag.write().unwrap() = Some(tag);
+        *self.cached_credential_tag.write().unwrap() = Some(tag.clone());
+        let _ = self.store.set_session_tag(&tag).await;
 
         self.store.save_credential(passkey).await?;
 
