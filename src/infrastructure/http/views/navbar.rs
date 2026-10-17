@@ -18,6 +18,8 @@ pub fn render_navbar(
     let home_url = "/";
     let backups_url = "/backups";
 
+    let app_version = concat!("v", env!("CARGO_PKG_VERSION"));
+
     let home_classes = if active == ActiveNav::Home {
         "bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-sm"
     } else {
@@ -43,7 +45,7 @@ pub fn render_navbar(
                     <div>
                         <div class="flex items-center gap-2">
                             <h1 class="text-sm sm:text-base font-display font-bold tracking-tight text-white">{app_title}</h1>
-                            <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">v0.2</span>
+                            <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-white/[0.05] text-slate-400 border border-white/[0.08]">{app_version}</span>
                         </div>
                         <p class="hidden sm:block text-[11px] text-slate-400 font-normal">{app_subtitle}</p>
                     </div>
