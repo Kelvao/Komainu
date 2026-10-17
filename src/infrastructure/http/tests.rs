@@ -384,9 +384,18 @@ async fn test_set_language_handler() {
         .uri("/set-lang?lang=en&redirect=//evil.com")
         .body(Body::empty())
         .unwrap();
-    let res_evil = router.oneshot(req_evil).await.unwrap();
+    let res_evil = router.clone().oneshot(req_evil).await.unwrap();
     assert_eq!(res_evil.status(), StatusCode::SEE_OTHER);
     assert_eq!(res_evil.headers().get("location").unwrap().to_str().unwrap(), "/");
+
+    // Malicious backslash open redirect rejected (SEC-17) -> falls back to "/"
+    let req_evil_slash = Request::builder()
+        .uri("/set-lang?lang=en&redirect=/\\evil.com")
+        .body(Body::empty())
+        .unwrap();
+    let res_evil_slash = router.oneshot(req_evil_slash).await.unwrap();
+    assert_eq!(res_evil_slash.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res_evil_slash.headers().get("location").unwrap().to_str().unwrap(), "/");
 }
 
 #[tokio::test]

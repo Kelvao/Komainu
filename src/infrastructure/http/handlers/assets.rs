@@ -31,7 +31,7 @@ pub async fn set_lang_handler(
 
     let redirect_url = query
         .redirect
-        .filter(|r| r.starts_with('/') && !r.starts_with("//"))
+        .filter(|r| r.starts_with('/') && !r.starts_with("//") && !r.contains('\\'))
         .unwrap_or_else(|| "/".to_string());
 
     (jar.add(cookie), Redirect::to(&redirect_url).into_response())
