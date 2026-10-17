@@ -96,6 +96,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/container/stop", post(container_stop_handler))
         .route("/api/container/restart", post(container_restart_handler))
         .route("/api/container/update", post(container_update_handler))
+        .route("/api/container/rebuild", post(container_rebuild_handler))
         .layer(from_fn(security_headers_middleware))
         .layer(from_fn({
             let csrf_state = state.clone();
