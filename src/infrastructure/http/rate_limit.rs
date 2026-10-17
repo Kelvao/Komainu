@@ -58,14 +58,41 @@ pub async fn rate_limit_middleware(
     next.run(req).await
 }
 
+fn is_trusted_peer(addr: std::net::IpAddr) -> bool {
+    if addr.is_loopback() {
+        return true;
+    }
+
+    let trusted_env = match std::env::var("TRUSTED_PROXIES").or_else(|_| std::env::var("TRUST_PRIVATE_PROXIES")) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    for item in trusted_env.split(',') {
+        let trimmed = item.trim();
+        if trimmed.eq_ignore_ascii_case("private") || trimmed == "1" || trimmed.eq_ignore_ascii_case("true") {
+            match addr {
+                std::net::IpAddr::V4(ipv4) if ipv4.is_private() => return true,
+                std::net::IpAddr::V6(ipv6) if (ipv6.octets()[0] & 0xfe) == 0xfc => return true,
+                _ => {}
+            }
+        } else if let Ok(trusted_ip) = trimmed.parse::<std::net::IpAddr>()
+            && addr == trusted_ip {
+                return true;
+        }
+    }
+
+    false
+}
+
 pub(crate) fn extract_client_ip(req: &Request) -> String {
-    let peer_ip = req
+    let peer_addr = req
         .extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-        .map(|ci| ci.0.ip().to_string());
+        .map(|ci| ci.0.ip());
 
-    let is_trusted_proxy = match peer_ip.as_deref() {
-        Some(ip) => ip == "127.0.0.1" || ip == "::1",
+    let is_trusted_proxy = match peer_addr {
+        Some(addr) => is_trusted_peer(addr),
         None => true, // Fallback for synthetic requests in tests
     };
 
@@ -85,5 +112,5 @@ pub(crate) fn extract_client_ip(req: &Request) -> String {
         }
     }
 
-    peer_ip.unwrap_or_else(|| "127.0.0.1".to_string())
+    peer_addr.map(|a| a.to_string()).unwrap_or_else(|| "127.0.0.1".to_string())
 }

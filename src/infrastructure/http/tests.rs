@@ -1061,6 +1061,28 @@ fn test_extract_client_ip_prevents_spoofing() {
     let loopback_addr: SocketAddr = "127.0.0.1:44321".parse().unwrap();
     req_loopback.extensions_mut().insert(ConnectInfo(loopback_addr));
     assert_eq!(extract_client_ip(&req_loopback), "198.51.100.55");
+
+    // 3. Docker reverse proxy with TRUSTED_PROXIES=private
+    unsafe { std::env::set_var("TRUSTED_PROXIES", "private"); }
+    let mut req_docker = Request::builder()
+        .header("x-forwarded-for", "203.0.113.88")
+        .body(Body::empty())
+        .unwrap();
+    let docker_proxy_addr: SocketAddr = "172.18.0.2:44321".parse().unwrap();
+    req_docker.extensions_mut().insert(ConnectInfo(docker_proxy_addr));
+    assert_eq!(extract_client_ip(&req_docker), "203.0.113.88");
+    unsafe { std::env::remove_var("TRUSTED_PROXIES"); }
+
+    // 4. Docker reverse proxy with TRUSTED_PROXIES explicit IP
+    unsafe { std::env::set_var("TRUSTED_PROXIES", "172.18.0.5, 10.0.0.1"); }
+    let mut req_explicit = Request::builder()
+        .header("x-real-ip", "203.0.113.99")
+        .body(Body::empty())
+        .unwrap();
+    let explicit_addr: SocketAddr = "172.18.0.5:44321".parse().unwrap();
+    req_explicit.extensions_mut().insert(ConnectInfo(explicit_addr));
+    assert_eq!(extract_client_ip(&req_explicit), "203.0.113.99");
+    unsafe { std::env::remove_var("TRUSTED_PROXIES"); }
 }
 
 #[tokio::test]
