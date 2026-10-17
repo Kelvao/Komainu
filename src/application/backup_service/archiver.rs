@@ -104,10 +104,13 @@ pub fn build_zip_archive(
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
                     && name.starts_with("rsa_key")
                     && file_type.is_file()
-                    && let Ok(mut key_file) = fs::File::open(&path)
-                    && zip.start_file(name, options).is_ok()
                 {
-                    let _ = std::io::copy(&mut key_file, &mut zip);
+                    let mut key_file = fs::File::open(&path)
+                        .map_err(|e| BackupError::IoError(format!("Failed to open RSA key {name}: {e}")))?;
+                    zip.start_file(name, options)
+                        .map_err(|e| BackupError::ZipError(format!("Failed to start RSA key {name} in zip: {e}")))?;
+                    std::io::copy(&mut key_file, &mut zip)
+                        .map_err(|e| BackupError::IoError(format!("Failed to write RSA key {name} to zip: {e}")))?;
                 }
             }
         }
@@ -121,11 +124,13 @@ pub fn build_zip_archive(
                 tracing::warn!("Ignoring symlink env file in backup: {:?}", env_candidate);
                 continue;
             }
-            if meta.is_file()
-                && let Ok(mut env_file) = fs::File::open(&env_candidate)
-                && zip.start_file(*env_name, options).is_ok()
-            {
-                let _ = std::io::copy(&mut env_file, &mut zip);
+            if meta.is_file() {
+                let mut env_file = fs::File::open(&env_candidate)
+                    .map_err(|e| BackupError::IoError(format!("Failed to open env file {env_name}: {e}")))?;
+                zip.start_file(*env_name, options)
+                    .map_err(|e| BackupError::ZipError(format!("Failed to start env file {env_name} in zip: {e}")))?;
+                std::io::copy(&mut env_file, &mut zip)
+                    .map_err(|e| BackupError::IoError(format!("Failed to write env file {env_name} to zip: {e}")))?;
                 break;
             }
         }
@@ -181,12 +186,13 @@ pub fn add_directory_to_zip<W: Write + std::io::Seek>(
             } else {
                 options
             };
-            if let Ok(file) = fs::File::open(&path)
-                && zip.start_file(zip_path, file_options).is_ok()
-            {
-                let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
-                let _ = std::io::copy(&mut reader, zip);
-            }
+            let file = fs::File::open(&path)
+                .map_err(|e| BackupError::IoError(format!("Failed to open file {:?}: {e}", path)))?;
+            zip.start_file(&zip_path, file_options)
+                .map_err(|e| BackupError::ZipError(format!("Failed to start file in zip {zip_path}: {e}")))?;
+            let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+            std::io::copy(&mut reader, zip)
+                .map_err(|e| BackupError::IoError(format!("Failed writing file {zip_path} to zip: {e}")))?;
         }
     }
 
