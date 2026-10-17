@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use webauthn_rs::prelude::Passkey;
-
-use crate::domain::auth::{AuthError, BoxFuture, CredentialStorePort};
+use crate::domain::auth::{AuthError, BoxFuture, CredentialStorePort, Passkey};
 
 pub struct FileCredentialStore {
     path: PathBuf,

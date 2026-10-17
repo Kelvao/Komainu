@@ -1,7 +1,7 @@
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use webauthn_rs::prelude::Passkey;
+pub use passkey_auth::PasskeyCredential as Passkey;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 

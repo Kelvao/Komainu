@@ -4,9 +4,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::{Cookie, SignedCookieJar};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use webauthn_rs::prelude::{
-    CreationChallengeResponse, PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse,
-};
+use passkey_auth::{AuthenticationChallenge, AuthenticationResponse, RegistrationChallenge, RegistrationResponse};
 
 use crate::infrastructure::http::session::{
     is_authenticated, resolve_i18n, QR_BIND_COOKIE, SESSION_COOKIE, SESSION_DURATION_SECS,
@@ -36,7 +34,7 @@ pub async fn login_page(jar: SignedCookieJar, State(state): State<AppState>) -> 
 #[derive(Serialize)]
 pub struct LoginStartResponse {
     pub auth_id: Uuid,
-    pub challenge: RequestChallengeResponse,
+    pub challenge: AuthenticationChallenge,
 }
 
 pub async fn login_start_handler(State(state): State<AppState>) -> Response {
@@ -47,9 +45,45 @@ pub async fn login_start_handler(State(state): State<AppState>) -> Response {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+pub enum IncomingAuthenticationPayload {
+    Nested {
+        id: String,
+        response: NestedAuthResponse,
+    },
+    Flat(AuthenticationResponse),
+}
+
+#[derive(Deserialize)]
+pub struct NestedAuthResponse {
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+    #[serde(rename = "authenticatorData")]
+    pub authenticator_data: String,
+    pub signature: String,
+    #[serde(rename = "userHandle", default)]
+    pub user_handle: Option<String>,
+}
+
+impl From<IncomingAuthenticationPayload> for AuthenticationResponse {
+    fn from(p: IncomingAuthenticationPayload) -> Self {
+        match p {
+            IncomingAuthenticationPayload::Nested { id, response } => AuthenticationResponse {
+                id,
+                authenticator_data: response.authenticator_data,
+                signature: response.signature,
+                client_data_json: response.client_data_json,
+                user_handle: response.user_handle,
+            },
+            IncomingAuthenticationPayload::Flat(f) => f,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct LoginFinishPayload {
     pub auth_id: Uuid,
-    pub credential: PublicKeyCredential,
+    pub credential: IncomingAuthenticationPayload,
 }
 
 pub async fn login_finish_handler(
@@ -57,9 +91,10 @@ pub async fn login_finish_handler(
     State(state): State<AppState>,
     Json(payload): Json<LoginFinishPayload>,
 ) -> Response {
+    let credential = AuthenticationResponse::from(payload.credential);
     match state
         .auth_service
-        .finish_authentication(payload.auth_id, &payload.credential)
+        .finish_authentication(payload.auth_id, &credential)
         .await
     {
         Ok(_) => {
@@ -286,7 +321,7 @@ pub async fn qr_mobile_start_handler(
 pub struct QrMobileFinishPayload {
     pub token: String,
     pub auth_id: Uuid,
-    pub credential: PublicKeyCredential,
+    pub credential: IncomingAuthenticationPayload,
 }
 
 pub async fn qr_mobile_finish_handler(
@@ -303,7 +338,8 @@ pub async fn qr_mobile_finish_handler(
         return (StatusCode::BAD_REQUEST, "QR session expired").into_response();
     }
 
-    match state.auth_service.finish_authentication(payload.auth_id, &payload.credential).await {
+    let credential = AuthenticationResponse::from(payload.credential);
+    match state.auth_service.finish_authentication(payload.auth_id, &credential).await {
         Ok(_) => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -337,7 +373,7 @@ pub async fn register_page(
 #[derive(Serialize)]
 pub struct RegisterStartResponse {
     pub reg_id: Uuid,
-    pub challenge: CreationChallengeResponse,
+    pub challenge: RegistrationChallenge,
 }
 
 pub async fn register_start_handler(
@@ -356,9 +392,43 @@ pub async fn register_start_handler(
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+pub enum IncomingRegistrationPayload {
+    Nested {
+        id: String,
+        response: NestedRegResponse,
+    },
+    Flat(RegistrationResponse),
+}
+
+#[derive(Deserialize)]
+pub struct NestedRegResponse {
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+    #[serde(rename = "attestationObject")]
+    pub attestation_object: String,
+    #[serde(default)]
+    pub transports: Vec<String>,
+}
+
+impl From<IncomingRegistrationPayload> for RegistrationResponse {
+    fn from(p: IncomingRegistrationPayload) -> Self {
+        match p {
+            IncomingRegistrationPayload::Nested { id, response } => RegistrationResponse {
+                id,
+                transports: response.transports,
+                attestation_object: response.attestation_object,
+                client_data_json: response.client_data_json,
+            },
+            IncomingRegistrationPayload::Flat(f) => f,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct RegisterFinishPayload {
     pub reg_id: Uuid,
-    pub credential: RegisterPublicKeyCredential,
+    pub credential: IncomingRegistrationPayload,
 }
 
 pub async fn register_finish_handler(
@@ -375,9 +445,10 @@ pub async fn register_finish_handler(
         return (StatusCode::FORBIDDEN, state.i18n.register.token_invalid.clone()).into_response();
     }
 
+    let credential = RegistrationResponse::from(payload.credential);
     match state
         .auth_service
-        .finish_registration(payload.reg_id, &payload.credential)
+        .finish_registration(payload.reg_id, &credential)
         .await
     {
         Ok(_) => (StatusCode::OK, state.i18n.common.passkey_registered_success.clone()).into_response(),

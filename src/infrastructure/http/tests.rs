@@ -8,10 +8,9 @@ use axum::response::IntoResponse;
 use axum_extra::extract::cookie::{Cookie, SignedCookieJar};
 use tower::ServiceExt;
 use uuid::Uuid;
-use crate::domain::auth::{AuthError, CredentialStorePort};
+use crate::domain::auth::{AuthError, CredentialStorePort, Passkey};
 use crate::domain::container::{BoxFuture, ContainerError, ContainerPort, ContainerState, ContainerStatus};
 use crate::domain::system::{SystemMetrics, SystemMonitorPort};
-use webauthn_rs::prelude::Passkey;
 
 struct MockContainerPort;
 impl ContainerPort for MockContainerPort {

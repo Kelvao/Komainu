@@ -4,7 +4,10 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use webauthn_rs::prelude::*;
+use passkey_auth::{
+    AuthenticationChallenge, AuthenticationResponse, AuthenticationState,
+    RegistrationChallenge, RegistrationResponse, RegistrationState, RpId, Webauthn,
+};
 
 use crate::domain::auth::{AuthError, CredentialStorePort};
 
@@ -54,8 +57,8 @@ pub struct AuthService {
     webauthn: Arc<Webauthn>,
     store: Arc<dyn CredentialStorePort>,
     active_reg_token: Arc<Mutex<Option<String>>>,
-    reg_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyRegistration)>>>,
-    auth_states: Arc<Mutex<HashMap<Uuid, (Instant, PasskeyAuthentication)>>>,
+    reg_states: Arc<Mutex<HashMap<Uuid, (Instant, RegistrationState)>>>,
+    auth_states: Arc<Mutex<HashMap<Uuid, (Instant, AuthenticationState)>>>,
     qr_states: Arc<Mutex<HashMap<Uuid, QrAuthState>>>,
     cached_credential_tag: Arc<std::sync::RwLock<Option<String>>>,
 }
@@ -66,10 +69,11 @@ impl AuthService {
         rp_origin: &str,
         store: Arc<dyn CredentialStorePort>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let url = Url::parse(rp_origin)?;
-        let builder = WebauthnBuilder::new(rp_id, &url)?
-            .rp_name("Komainu Admin");
-        let webauthn = Arc::new(builder.build()?);
+        let rp_id_parsed = RpId::try_from_url(rp_id).unwrap_or_else(|_| RpId::new(rp_id));
+        let webauthn = Arc::new(
+            Webauthn::new(rp_id_parsed.as_str(), "Komainu Admin", rp_origin)
+                .authenticator_attachment(passkey_auth::Attachment::Any),
+        );
 
         Ok(Self {
             webauthn,
@@ -105,7 +109,7 @@ impl AuthService {
         if let Ok(keys) = self.store.load_credentials().await
             && let Some(first) = keys.first() {
                 use sha2::{Digest, Sha256};
-                let hash = Sha256::digest(first.cred_id().as_ref());
+                let hash = Sha256::digest(first.id.as_bytes());
                 let tag = format!("{:016x}", u64::from_be_bytes(hash[..8].try_into().unwrap()));
                 *self.cached_credential_tag.write().unwrap() = Some(tag.clone());
                 let _ = self.store.set_session_tag(&tag).await;
@@ -129,7 +133,7 @@ impl AuthService {
     pub async fn start_registration(
         &self,
         token: &str,
-    ) -> Result<(Uuid, CreationChallengeResponse), AuthError> {
+    ) -> Result<(Uuid, RegistrationChallenge), AuthError> {
         if !self.is_valid_reg_token(token).await {
             return Err(AuthError::InvalidToken);
         }
@@ -137,8 +141,7 @@ impl AuthService {
         let user_id = Uuid::new_v4();
         let (ccr, reg_state) = self
             .webauthn
-            .start_passkey_registration(user_id, "admin", "Komainu Administrator", None)
-            .map_err(|e| AuthError::WebauthnError(e.to_string()))?;
+            .start_registration(user_id.as_bytes(), "admin", "Komainu Administrator", &[]);
 
         let reg_id = Uuid::new_v4();
         let mut states = self.reg_states.lock().await;
@@ -151,7 +154,7 @@ impl AuthService {
     pub async fn finish_registration(
         &self,
         reg_id: Uuid,
-        reg_response: &RegisterPublicKeyCredential,
+        reg_response: &RegistrationResponse,
     ) -> Result<(), AuthError> {
         let (_, reg_state) = {
             let mut states = self.reg_states.lock().await;
@@ -162,11 +165,11 @@ impl AuthService {
 
         let passkey = self
             .webauthn
-            .finish_passkey_registration(reg_response, &reg_state)
+            .finish_registration(&reg_state, reg_response)
             .map_err(|e| AuthError::WebauthnError(e.to_string()))?;
 
         use sha2::{Digest, Sha256};
-        let hash = Sha256::digest(passkey.cred_id().as_ref());
+        let hash = Sha256::digest(passkey.id.as_bytes());
         let tag = format!("{:016x}", u64::from_be_bytes(hash[..8].try_into().unwrap()));
         *self.cached_credential_tag.write().unwrap() = Some(tag.clone());
         let _ = self.store.set_session_tag(&tag).await;
@@ -180,7 +183,7 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn start_authentication(&self) -> Result<(Uuid, RequestChallengeResponse), AuthError> {
+    pub async fn start_authentication(&self) -> Result<(Uuid, AuthenticationChallenge), AuthError> {
         let passkeys = self.store.load_credentials().await?;
         if passkeys.is_empty() {
             return Err(AuthError::NoAdminRegistered);
@@ -188,8 +191,7 @@ impl AuthService {
 
         let (rcr, auth_state) = self
             .webauthn
-            .start_passkey_authentication(&passkeys)
-            .map_err(|e| AuthError::WebauthnError(e.to_string()))?;
+            .start_authentication_with_creds(&passkeys);
 
         let auth_id = Uuid::new_v4();
         let mut states = self.auth_states.lock().await;
@@ -202,7 +204,7 @@ impl AuthService {
     pub async fn finish_authentication(
         &self,
         auth_id: Uuid,
-        auth_response: &PublicKeyCredential,
+        auth_response: &AuthenticationResponse,
     ) -> Result<(), AuthError> {
         let (_, auth_state) = {
             let mut states = self.auth_states.lock().await;
@@ -211,9 +213,19 @@ impl AuthService {
                 .ok_or(AuthError::SessionExpired)?
         };
 
-        self.webauthn
-            .finish_passkey_authentication(auth_response, &auth_state)
+        let passkeys = self.store.load_credentials().await?;
+        let passkey = passkeys.first().ok_or(AuthError::NoAdminRegistered)?;
+
+        let outcome = self
+            .webauthn
+            .finish_authentication(&auth_state, auth_response, passkey)
             .map_err(|e| AuthError::WebauthnError(e.to_string()))?;
+
+        if outcome.new_counter > passkey.counter {
+            let mut updated = passkey.clone();
+            updated.counter = outcome.new_counter;
+            let _ = self.store.save_credential(updated).await;
+        }
 
         Ok(())
     }
