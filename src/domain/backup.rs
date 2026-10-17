@@ -151,7 +151,9 @@ pub fn encrypt_aes_256_gcm(data: &[u8], password: &str) -> Result<Vec<u8>, Backu
     Ok(out)
 }
 
-/// Stream-encrypt a file on disk using AES-256-GCM.
+/// Encrypt a file on disk using AES-256-GCM.
+/// shortcut: single-pass in-memory AEAD; reads whole zip into RAM buffer up to MAX_SAFE_BACKUP_BYTES.
+/// Suitable for standard Vaultwarden archives (< 1 GB) where fast in-memory sealing is preferred.
 pub fn encrypt_file_aes_256_gcm(
     src_path: &std::path::Path,
     dst_path: &std::path::Path,
@@ -188,6 +190,12 @@ pub fn encrypt_file_aes_256_gcm(
         return Err(BackupError::EncryptionError(format!(
             "Backup file size ({raw_len} bytes) exceeds maximum supported single-pass limit ({MAX_SAFE_BACKUP_BYTES} bytes)"
         )));
+    }
+    if raw_len > 256 * 1024 * 1024 {
+        tracing::warn!(
+            "Encrypting large vault archive ({} MB) in a single in-memory buffer",
+            raw_len / (1024 * 1024)
+        );
     }
     let file_len = raw_len as usize;
 
