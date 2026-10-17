@@ -1063,6 +1063,61 @@ fn test_extract_client_ip_prevents_spoofing() {
     assert_eq!(extract_client_ip(&req_loopback), "198.51.100.55");
 }
 
+#[tokio::test]
+async fn test_container_rebuild_route_authenticated_and_csrf() {
+    use axum::body::to_bytes;
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    auth_service.set_credential_tag("rebuild_tag".to_string());
+    let state = create_test_app_state(auth_service, "pt-BR");
+    let router = create_router(state.clone());
+
+    // 1. Unauthenticated -> 401 Unauthorized
+    let req_unauth = Request::builder()
+        .uri("/api/container/rebuild")
+        .method("POST")
+        .header("origin", "http://localhost:3000")
+        .body(Body::empty())
+        .unwrap();
+    let res_unauth = router.clone().oneshot(req_unauth).await.unwrap();
+    assert_eq!(res_unauth.status(), StatusCode::UNAUTHORIZED);
+
+    // 2. Untrusted Origin -> 403 Forbidden
+    let req_evil = Request::builder()
+        .uri("/api/container/rebuild")
+        .method("POST")
+        .header("origin", "https://malicious-site.com")
+        .body(Body::empty())
+        .unwrap();
+    let res_evil = router.clone().oneshot(req_evil).await.unwrap();
+    assert_eq!(res_evil.status(), StatusCode::FORBIDDEN);
+
+    // 3. Authenticated + Trusted Origin -> 200 OK
+    let jar = SignedCookieJar::new(state.cookie_key.clone());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut cookie = Cookie::new(SESSION_COOKIE, format!("admin:{now}:rebuild_tag"));
+    cookie.set_path("/");
+    let jar = jar.add(cookie);
+    let cookie_res = (jar, StatusCode::OK).into_response();
+    let cookie_str = cookie_res.headers().get("set-cookie").unwrap().to_str().unwrap().split(';').next().unwrap();
+
+    let req_ok = Request::builder()
+        .uri("/api/container/rebuild")
+        .method("POST")
+        .header("cookie", cookie_str)
+        .header("origin", "http://localhost:3000")
+        .body(Body::empty())
+        .unwrap();
+    let res_ok = router.oneshot(req_ok).await.unwrap();
+    assert_eq!(res_ok.status(), StatusCode::OK);
+    let body = to_bytes(res_ok.into_body(), usize::MAX).await.unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.contains("hx-post=\"/api/container/rebuild\""));
+}
+
+
 
 
 
