@@ -174,7 +174,7 @@ pub async fn render_backups_fragment(
                     <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>"##,
-            msg
+            super::html_escape(&msg)
         ),
         Some((false, msg)) => format!(
             r##"<div id="backup-action-alert" class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between gap-3 shadow-lg">
@@ -186,7 +186,7 @@ pub async fn render_backups_fragment(
                     <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>"##,
-            msg
+            super::html_escape(&msg)
         ),
         None => String::new(),
     };
@@ -260,6 +260,7 @@ pub async fn render_backups_fragment(
             let sz_str = format_bytes(file.size_bytes);
             let enc_name = crate::infrastructure::pcloud::urlencoding_path(&file.name);
             let ts = extract_file_timestamp(&file.modified, &file.name);
+            let safe_filename = super::html_escape(&file.name);
             history_rows.push_str(&format!(
                 r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
                     <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
@@ -276,7 +277,7 @@ pub async fn render_backups_fragment(
                     </td>
                 </tr>"##,
                 ts = ts,
-                filename = file.name,
+                filename = safe_filename,
                 size_bytes = file.size_bytes,
                 dt_str = dt_str,
                 sz_str = sz_str,
@@ -292,10 +293,11 @@ pub async fn render_backups_fragment(
                 .map(|dt| dt.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string())
                 .unwrap_or_else(|| "N/A".to_string());
             let (badge, badge_color) = match &rec.status {
-                crate::domain::backup::BackupStatus::Success => (i18n.backups.status_success.as_str(), "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"),
-                crate::domain::backup::BackupStatus::Failed(e) => (e.as_str(), "bg-rose-500/10 text-rose-400 border-rose-500/25"),
+                crate::domain::backup::BackupStatus::Success => (i18n.backups.status_success.clone(), "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"),
+                crate::domain::backup::BackupStatus::Failed(e) => (super::html_escape(e), "bg-rose-500/10 text-rose-400 border-rose-500/25"),
             };
             let sz_str = format_bytes(rec.size_bytes);
+            let safe_filename = super::html_escape(&rec.filename);
             history_rows.push_str(&format!(
                 r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
                     <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
@@ -307,7 +309,7 @@ pub async fn render_backups_fragment(
                     <td class="py-3 px-3 text-right text-slate-500 whitespace-nowrap">-</td>
                 </tr>"##,
                 ts = rec.timestamp,
-                filename = rec.filename,
+                filename = safe_filename,
                 size_bytes = rec.size_bytes,
                 dt_str = dt_str,
                 sz_str = sz_str,
@@ -759,7 +761,7 @@ pub async fn render_backups_fragment(
         enable_cron = i18n.backups.enable_cron,
         cron_checked = cron_checked,
         cron_expression_label = i18n.backups.cron_expression_label,
-        cron_val = config.cron_expression,
+        cron_val = super::html_escape(&config.cron_expression),
         cron_hint = i18n.backups.cron_hint,
         preset_daily = i18n.backups.cron_preset_daily,
         preset_12h = i18n.backups.cron_preset_12h,
@@ -770,7 +772,7 @@ pub async fn render_backups_fragment(
         pcloud_section = i18n.backups.pcloud_section,
         pcloud_status_card = pcloud_status_card,
         pcloud_client_id_label = i18n.backups.pcloud_client_id_label,
-        pcloud_client_id_val = client_id_val,
+        pcloud_client_id_val = super::html_escape(client_id_val),
         pcloud_client_id_ph = i18n.backups.pcloud_client_id_placeholder,
         pcloud_client_secret_label = i18n.backups.pcloud_client_secret_label,
         pcloud_client_secret_ph = client_secret_ph,
@@ -780,7 +782,7 @@ pub async fn render_backups_fragment(
         region_eu_selected = region_eu_selected,
         region_us_selected = region_us_selected,
         pcloud_folder_label = i18n.backups.pcloud_folder_label,
-        pcloud_folder_val = config.pcloud_folder,
+        pcloud_folder_val = super::html_escape(&config.pcloud_folder),
         pcloud_folder_ph = i18n.backups.pcloud_folder_placeholder,
         pcloud_callback_url_label = i18n.backups.pcloud_callback_url_label,
         pcloud_callback_hint = i18n.backups.pcloud_callback_hint,

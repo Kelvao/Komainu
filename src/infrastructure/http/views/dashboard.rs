@@ -58,7 +58,7 @@ pub async fn render_dashboard_fragment(
                 </button>
             </div>"##,
             i18n.common.operation_failed,
-            e
+            super::html_escape(&e)
         ),
         None => String::new(),
     };
@@ -121,7 +121,7 @@ pub async fn render_dashboard_fragment(
 
             (
                 badge,
-                status.image.clone(),
+                super::html_escape(&status.image),
                 status.uptime.clone().unwrap_or_else(|| "N/A".to_string()),
                 cpu_val,
                 cpu_bar,
@@ -135,7 +135,7 @@ pub async fn render_dashboard_fragment(
                     {} {}
                 </span>"##,
                 i18n.common.operation_failed,
-                e
+                super::html_escape(&e.to_string())
             ),
             "N/A".to_string(),
             "N/A".to_string(),

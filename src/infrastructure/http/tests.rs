@@ -1201,6 +1201,16 @@ async fn test_container_rebuild_route_authenticated_and_csrf() {
     assert!(body_str.contains("hx-post=\"/api/container/rebuild\""));
 }
 
+#[test]
+fn test_html_escape() {
+    assert_eq!(
+        views::html_escape("<script>alert('XSS & \"test\"')</script>"),
+        "&lt;script&gt;alert(&#x27;XSS &amp; &quot;test&quot;&#x27;)&lt;/script&gt;"
+    );
+    assert_eq!(views::html_escape("Safe string 123"), "Safe string 123");
+}
+
+
 
 
 
