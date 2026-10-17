@@ -184,7 +184,13 @@ impl ContainerPort for DockerAdapter {
 
             {
                 let mut cache = self.status_cache.lock().unwrap_or_else(|e| e.into_inner());
-                cache.insert(name, (std::time::Instant::now(), status.clone()));
+                let now = std::time::Instant::now();
+                cache.retain(|_, (t, _)| now.duration_since(*t).as_secs() < 60);
+                if cache.len() >= 20
+                    && let Some(oldest) = cache.iter().min_by_key(|(_, (t, _))| *t).map(|(k, _)| k.clone()) {
+                        cache.remove(&oldest);
+                    }
+                cache.insert(name, (now, status.clone()));
             }
 
             Ok(status)
@@ -474,6 +480,31 @@ mod tests {
             assert_eq!(map.len(), 1);
             assert!(map.contains_key("new_container"));
             assert!(!map.contains_key("old_container"));
+        }
+    }
+
+    #[test]
+    fn test_docker_adapter_status_cache_eviction_logic() {
+        let adapter = DockerAdapter::new("/var/run/docker.sock");
+        let now = std::time::Instant::now();
+        let status = ContainerStatus {
+            name: "test".to_string(),
+            state: ContainerState::Running,
+            image: "test:latest".to_string(),
+            uptime: None,
+            cpu_usage_pct: None,
+            memory_used_mb: None,
+            memory_limit_mb: None,
+        };
+        {
+            let mut cache = adapter.status_cache.lock().unwrap();
+            cache.insert("old_container".to_string(), (now - std::time::Duration::from_secs(70), status.clone()));
+            cache.insert("active_container".to_string(), (now, status));
+
+            cache.retain(|_, (t, _)| now.duration_since(*t).as_secs() < 60);
+            assert_eq!(cache.len(), 1);
+            assert!(cache.contains_key("active_container"));
+            assert!(!cache.contains_key("old_container"));
         }
     }
 
