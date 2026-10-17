@@ -176,7 +176,14 @@
     "status_failed": "Falha",
     "config_saved_success": "Configurações de backup salvas com sucesso!",
     "backup_started_success": "Backup executado e enviado com sucesso ao pCloud!",
-    "backup_already_running": "Um backup já está em andamento. Aguarde a finalização."
+    "backup_already_running": "Um backup já está em andamento. Aguarde a finalização.",
+    "sort_by": "Ordenar",
+    "sort_date_desc": "Mais recentes",
+    "sort_date_asc": "Mais antigos",
+    "sort_size_desc": "Maior tamanho",
+    "sort_size_asc": "Menor tamanho",
+    "sort_name_asc": "Nome (A-Z)",
+    "sort_name_desc": "Nome (Z-A)"
   }
 }
 

@@ -61,6 +61,22 @@ pub fn format_file_date(modified: &str, filename: &str) -> String {
     }
 }
 
+pub fn extract_file_timestamp(modified: &str, filename: &str) -> i64 {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(modified) {
+        return dt.timestamp();
+    }
+    if let Some(pos) = filename.find("backup_") {
+        let rest = &filename[pos + 7..];
+        if rest.len() >= 15 {
+            let date_part = &rest[..15];
+            if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_part, "%Y%m%d_%H%M%S") {
+                return naive.and_utc().timestamp();
+            }
+        }
+    }
+    0
+}
+
 pub fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
         return "0 B".to_string();
@@ -84,13 +100,68 @@ pub async fn render_backups_fragment(
     state: &AppState,
     i18n: &Translations,
     action_msg: Option<(bool, String)>,
+    sort: Option<&str>,
+    order: Option<&str>,
 ) -> String {
     let config = state.backup_service.get_config().await.unwrap_or_default();
-    let history = state.backup_service.get_history().await.unwrap_or_default();
-    let remote_files = state.backup_service.list_remote_backups().await.unwrap_or_default();
+    let mut history = state.backup_service.get_history().await.unwrap_or_default();
+    let mut remote_files = state.backup_service.list_remote_backups().await.unwrap_or_default();
     let is_in_progress = state.backup_service.is_in_progress().await;
     let data_exists = state.backup_service.data_path_exists();
     let env_exists = state.backup_service.env_path_exists();
+
+    let sort_field = match sort {
+        Some("name") => "name",
+        Some("size") => "size",
+        _ => "date",
+    };
+    let sort_order = match order {
+        Some("asc") => "asc",
+        Some("desc") => "desc",
+        _ => {
+            if sort_field == "name" {
+                "asc"
+            } else {
+                "desc"
+            }
+        }
+    };
+
+    match (sort_field, sort_order) {
+        ("date", "asc") => {
+            remote_files.sort_by(|a, b| {
+                let ta = extract_file_timestamp(&a.modified, &a.name);
+                let tb = extract_file_timestamp(&b.modified, &b.name);
+                ta.cmp(&tb).then_with(|| a.name.cmp(&b.name))
+            });
+            history.sort_by_key(|a| a.timestamp);
+        }
+        ("date", _) => {
+            remote_files.sort_by(|a, b| {
+                let ta = extract_file_timestamp(&a.modified, &a.name);
+                let tb = extract_file_timestamp(&b.modified, &b.name);
+                tb.cmp(&ta).then_with(|| b.name.cmp(&a.name))
+            });
+            history.sort_by_key(|a| std::cmp::Reverse(a.timestamp));
+        }
+        ("name", "desc") => {
+            remote_files.sort_by_key(|a| std::cmp::Reverse(a.name.to_lowercase()));
+            history.sort_by_key(|a| std::cmp::Reverse(a.filename.to_lowercase()));
+        }
+        ("name", _) => {
+            remote_files.sort_by_key(|a| a.name.to_lowercase());
+            history.sort_by_key(|a| a.filename.to_lowercase());
+        }
+        ("size", "asc") => {
+            remote_files.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes).then_with(|| a.name.cmp(&b.name)));
+            history.sort_by_key(|a| a.size_bytes);
+        }
+        ("size", _) => {
+            remote_files.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes).then_with(|| b.name.cmp(&a.name)));
+            history.sort_by_key(|a| std::cmp::Reverse(a.size_bytes));
+        }
+        _ => {}
+    }
 
     let alert_banner = match action_msg {
         Some((true, msg)) => format!(
@@ -182,8 +253,9 @@ pub async fn render_backups_fragment(
             let dt_str = format_file_date(&file.modified, &file.name);
             let sz_str = format_bytes(file.size_bytes);
             let enc_name = crate::infrastructure::pcloud::urlencoding_path(&file.name);
+            let ts = extract_file_timestamp(&file.modified, &file.name);
             history_rows.push_str(&format!(
-                r##"<tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono">
+                r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
                     <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
                     <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
                     <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
@@ -197,8 +269,10 @@ pub async fn render_backups_fragment(
                         </a>
                     </td>
                 </tr>"##,
-                dt_str = dt_str,
+                ts = ts,
                 filename = file.name,
+                size_bytes = file.size_bytes,
+                dt_str = dt_str,
                 sz_str = sz_str,
                 status_remote = i18n.backups.status_remote,
                 fileid = file.fileid,
@@ -217,7 +291,7 @@ pub async fn render_backups_fragment(
             };
             let sz_str = format_bytes(rec.size_bytes);
             history_rows.push_str(&format!(
-                r##"<tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono">
+                r##"<tr class="backup-row border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors text-xs font-mono" data-date="{ts}" data-name="{filename}" data-size="{size_bytes}">
                     <td class="py-3 px-3 text-slate-300 whitespace-nowrap">{dt_str}</td>
                     <td class="py-3 px-3 text-white font-medium break-all">{filename}</td>
                     <td class="py-3 px-3 text-slate-300 tabular-nums whitespace-nowrap">{sz_str}</td>
@@ -226,8 +300,10 @@ pub async fn render_backups_fragment(
                     </td>
                     <td class="py-3 px-3 text-right text-slate-500 whitespace-nowrap">-</td>
                 </tr>"##,
-                dt_str = dt_str,
+                ts = rec.timestamp,
                 filename = rec.filename,
+                size_bytes = rec.size_bytes,
+                dt_str = dt_str,
                 sz_str = sz_str,
                 badge = badge,
                 badge_color = badge_color,
@@ -310,9 +386,31 @@ pub async fn render_backups_fragment(
             i18n.backups.pcloud_oauth_btn
         )
     };
+    let sel_date_desc = if sort_field == "date" && sort_order == "desc" { " selected" } else { "" };
+    let sel_date_asc = if sort_field == "date" && sort_order == "asc" { " selected" } else { "" };
+    let sel_size_desc = if sort_field == "size" && sort_order == "desc" { " selected" } else { "" };
+    let sel_size_asc = if sort_field == "size" && sort_order == "asc" { " selected" } else { "" };
+    let sel_name_asc = if sort_field == "name" && sort_order == "asc" { " selected" } else { "" };
+    let sel_name_desc = if sort_field == "name" && sort_order == "desc" { " selected" } else { "" };
+
+    let (date_icon_symbol, date_icon_class) = if sort_field == "date" {
+        (if sort_order == "asc" { "▲" } else { "▼" }, "text-rose-400 font-mono text-[10px]")
+    } else {
+        ("↕", "text-slate-600 font-mono text-[10px] group-hover:text-slate-400")
+    };
+    let (name_icon_symbol, name_icon_class) = if sort_field == "name" {
+        (if sort_order == "asc" { "▲" } else { "▼" }, "text-rose-400 font-mono text-[10px]")
+    } else {
+        ("↕", "text-slate-600 font-mono text-[10px] group-hover:text-slate-400")
+    };
+    let (size_icon_symbol, size_icon_class) = if sort_field == "size" {
+        (if sort_order == "asc" { "▲" } else { "▼" }, "text-rose-400 font-mono text-[10px]")
+    } else {
+        ("↕", "text-slate-600 font-mono text-[10px] group-hover:text-slate-400")
+    };
 
     let poll_attr = if is_in_progress {
-        r##" hx-get="/api/backups/fragment" hx-trigger="every 3s" hx-target="#backups-content" hx-swap="innerHTML""##
+        r##" hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-trigger="every 3s" hx-target="#backups-content" hx-swap="innerHTML""##
     } else {
         ""
     };
@@ -481,22 +579,52 @@ pub async fn render_backups_fragment(
     <div class="bg-surface border border-rose-500/20 rounded-xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-rose-500/50 to-transparent"></div>
 
-        <div class="mb-4 pb-3 border-b border-white/[0.06] flex items-center justify-between">
+        <div class="mb-4 pb-3 border-b border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <h3 class="text-lg font-display font-bold tracking-tight text-white">{history_section}</h3>
             </div>
-            <button hx-get="/api/backups/fragment" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
-                <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-            </button>
+            <div class="flex items-center gap-2 self-end sm:self-auto">
+                <input type="hidden" id="backup-sort-field-input" name="sort" value="{sort_field}">
+                <input type="hidden" id="backup-sort-order-input" name="order" value="{sort_order}">
+                <div class="flex items-center gap-1.5">
+                    <label for="backup-sort-select" class="text-slate-400 text-xs font-mono hidden sm:inline">{sort_by}:</label>
+                    <select id="backup-sort-select" onchange="onBackupSortSelect(this.value)" class="px-2.5 py-1 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-200 text-xs font-mono cursor-pointer transition-colors">
+                        <option value="date-desc"{sel_date_desc}>{sort_date_desc}</option>
+                        <option value="date-asc"{sel_date_asc}>{sort_date_asc}</option>
+                        <option value="size-desc"{sel_size_desc}>{sort_size_desc}</option>
+                        <option value="size-asc"{sel_size_asc}>{sort_size_asc}</option>
+                        <option value="name-asc"{sel_name_asc}>{sort_name_asc}</option>
+                        <option value="name-desc"{sel_name_desc}>{sort_name_desc}</option>
+                    </select>
+                </div>
+                <button hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
+                    <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+            </div>
         </div>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table id="backup-history-table" class="w-full text-left border-collapse" data-sort-field="{sort_field}" data-sort-order="{sort_order}">
                 <thead>
                     <tr class="border-b border-white/[0.08] text-[11px] font-mono uppercase text-slate-400">
-                        <th class="py-2.5 px-3">{table_date}</th>
-                        <th class="py-2.5 px-3">{table_filename}</th>
-                        <th class="py-2.5 px-3">{table_size}</th>
+                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('date')" title="{table_date}">
+                            <div class="inline-flex items-center gap-1.5">
+                                <span>{table_date}</span>
+                                <span id="sort-icon-date" class="{date_icon_class}">{date_icon_symbol}</span>
+                            </div>
+                        </th>
+                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('name')" title="{table_filename}">
+                            <div class="inline-flex items-center gap-1.5">
+                                <span>{table_filename}</span>
+                                <span id="sort-icon-name" class="{name_icon_class}">{name_icon_symbol}</span>
+                            </div>
+                        </th>
+                        <th class="py-2.5 px-3 cursor-pointer select-none group hover:text-white transition-colors" onclick="sortBackupTable('size')" title="{table_size}">
+                            <div class="inline-flex items-center gap-1.5">
+                                <span>{table_size}</span>
+                                <span id="sort-icon-size" class="{size_icon_class}">{size_icon_symbol}</span>
+                            </div>
+                        </th>
                         <th class="py-2.5 px-3">{table_status}</th>
                         <th class="py-2.5 px-3 text-right">{table_action}</th>
                     </tr>
@@ -509,6 +637,84 @@ pub async fn render_backups_fragment(
     </div>
 
     <script>
+    function sortBackupTable(field, explicitOrder) {{
+        const table = document.getElementById('backup-history-table');
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr.backup-row'));
+        if (rows.length === 0) return;
+
+        let currentField = table.getAttribute('data-sort-field') || 'date';
+        let currentOrder = table.getAttribute('data-sort-order') || 'desc';
+
+        let order = explicitOrder;
+        if (!order) {{
+            if (field === currentField) {{
+                order = currentOrder === 'desc' ? 'asc' : 'desc';
+            }} else {{
+                order = (field === 'name') ? 'asc' : 'desc';
+            }}
+        }}
+
+        table.setAttribute('data-sort-field', field);
+        table.setAttribute('data-sort-order', order);
+
+        const fInput = document.getElementById('backup-sort-field-input');
+        if (fInput) fInput.value = field;
+        const oInput = document.getElementById('backup-sort-order-input');
+        if (oInput) oInput.value = order;
+
+        const select = document.getElementById('backup-sort-select');
+        if (select) {{
+            select.value = field + '-' + order;
+        }}
+
+        const icons = {{
+            date: document.getElementById('sort-icon-date'),
+            name: document.getElementById('sort-icon-name'),
+            size: document.getElementById('sort-icon-size'),
+        }};
+        for (const [k, el] of Object.entries(icons)) {{
+            if (!el) continue;
+            if (k === field) {{
+                el.textContent = order === 'asc' ? '▲' : '▼';
+                el.className = 'text-rose-400 font-mono text-[10px]';
+            }} else {{
+                el.textContent = '↕';
+                el.className = 'text-slate-600 font-mono text-[10px] group-hover:text-slate-400';
+            }}
+        }}
+
+        rows.sort((a, b) => {{
+            if (field === 'date') {{
+                const valA = parseInt(a.getAttribute('data-date') || '0', 10);
+                const valB = parseInt(b.getAttribute('data-date') || '0', 10);
+                return order === 'asc' ? valA - valB : valB - valA;
+            }} else if (field === 'size') {{
+                const valA = parseInt(a.getAttribute('data-size') || '0', 10);
+                const valB = parseInt(b.getAttribute('data-size') || '0', 10);
+                return order === 'asc' ? valA - valB : valB - valA;
+            }} else {{
+                const valA = (a.getAttribute('data-name') || '').toLowerCase();
+                const valB = (b.getAttribute('data-name') || '').toLowerCase();
+                return order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            }}
+        }});
+
+        for (const row of rows) {{
+            tbody.appendChild(row);
+        }}
+    }}
+
+    function onBackupSortSelect(val) {{
+        if (!val) return;
+        const parts = val.split('-');
+        if (parts.length === 2) {{
+            sortBackupTable(parts[0], parts[1]);
+        }}
+    }}
+
     function startPCloudOAuth() {{
         const cidEl = document.getElementById('pcloud-cid');
         const csecEl = document.getElementById('pcloud-csec');
@@ -580,9 +786,30 @@ pub async fn render_backups_fragment(
         env_path_badge = env_path_badge,
         btn_save_config = i18n.backups.btn_save_config,
         history_section = i18n.backups.history_section,
+        sort_by = i18n.backups.sort_by,
+        sort_field = sort_field,
+        sort_order = sort_order,
+        sel_date_desc = sel_date_desc,
+        sel_date_asc = sel_date_asc,
+        sel_size_desc = sel_size_desc,
+        sel_size_asc = sel_size_asc,
+        sel_name_asc = sel_name_asc,
+        sel_name_desc = sel_name_desc,
+        sort_date_desc = i18n.backups.sort_date_desc,
+        sort_date_asc = i18n.backups.sort_date_asc,
+        sort_size_desc = i18n.backups.sort_size_desc,
+        sort_size_asc = i18n.backups.sort_size_asc,
+        sort_name_asc = i18n.backups.sort_name_asc,
+        sort_name_desc = i18n.backups.sort_name_desc,
         table_date = i18n.backups.table_date,
+        date_icon_symbol = date_icon_symbol,
+        date_icon_class = date_icon_class,
         table_filename = i18n.backups.table_filename,
+        name_icon_symbol = name_icon_symbol,
+        name_icon_class = name_icon_class,
         table_size = i18n.backups.table_size,
+        size_icon_symbol = size_icon_symbol,
+        size_icon_class = size_icon_class,
         table_status = i18n.backups.table_status,
         table_action = i18n.backups.table_action,
         history_rows = history_rows,

@@ -176,7 +176,14 @@
     "status_failed": "Failed",
     "config_saved_success": "Backup settings saved successfully!",
     "backup_started_success": "Backup executed and uploaded to pCloud successfully!",
-    "backup_already_running": "A backup is already running. Please wait for completion."
+    "backup_already_running": "A backup is already running. Please wait for completion.",
+    "sort_by": "Sort",
+    "sort_date_desc": "Newest first",
+    "sort_date_asc": "Oldest first",
+    "sort_size_desc": "Largest size",
+    "sort_size_asc": "Smallest size",
+    "sort_name_asc": "Name (A-Z)",
+    "sort_name_desc": "Name (Z-A)"
   }
 }
 

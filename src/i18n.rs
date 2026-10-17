@@ -316,6 +316,20 @@ pub struct BackupsTranslations {
     pub backup_started_success: String,
     #[serde(default = "default_b_already_run")]
     pub backup_already_running: String,
+    #[serde(default = "default_b_sort_by")]
+    pub sort_by: String,
+    #[serde(default = "default_b_sort_date_desc")]
+    pub sort_date_desc: String,
+    #[serde(default = "default_b_sort_date_asc")]
+    pub sort_date_asc: String,
+    #[serde(default = "default_b_sort_size_desc")]
+    pub sort_size_desc: String,
+    #[serde(default = "default_b_sort_size_asc")]
+    pub sort_size_asc: String,
+    #[serde(default = "default_b_sort_name_asc")]
+    pub sort_name_asc: String,
+    #[serde(default = "default_b_sort_name_desc")]
+    pub sort_name_desc: String,
 }
 
 fn default_b_status() -> String { "Status do Agendamento & Operação".to_string() }
@@ -378,6 +392,13 @@ fn default_b_st_fail() -> String { "Falha".to_string() }
 fn default_b_cfg_saved() -> String { "Configurações de backup salvas com sucesso!".to_string() }
 fn default_b_bkp_succ() -> String { "Backup executado e enviado com sucesso ao pCloud!".to_string() }
 fn default_b_already_run() -> String { "Um backup já está em andamento. Aguarde a finalização.".to_string() }
+fn default_b_sort_by() -> String { "Ordenar".to_string() }
+fn default_b_sort_date_desc() -> String { "Mais recentes".to_string() }
+fn default_b_sort_date_asc() -> String { "Mais antigos".to_string() }
+fn default_b_sort_size_desc() -> String { "Maior tamanho".to_string() }
+fn default_b_sort_size_asc() -> String { "Menor tamanho".to_string() }
+fn default_b_sort_name_asc() -> String { "Nome (A-Z)".to_string() }
+fn default_b_sort_name_desc() -> String { "Nome (Z-A)".to_string() }
 
 static CACHED_TRANSLATIONS: std::sync::OnceLock<(std::sync::Arc<Translations>, std::sync::Arc<Translations>)> =
     std::sync::OnceLock::new();

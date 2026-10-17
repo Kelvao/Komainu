@@ -846,12 +846,53 @@ async fn test_backup_api_endpoints() {
         .header("cookie", cookie_str)
         .body(Body::empty())
         .unwrap();
-    let res_run = router.oneshot(req_run).await.unwrap();
+    let res_run = router.clone().oneshot(req_run).await.unwrap();
     assert_eq!(res_run.status(), StatusCode::OK);
     let run_bytes = to_bytes(res_run.into_body(), usize::MAX).await.unwrap();
     let run_html = String::from_utf8(run_bytes.to_vec()).unwrap();
     assert!(run_html.contains("hx-trigger=\"every 3s\""));
     assert!(run_html.contains(&state.i18n.backups.backup_started_success));
+
+    // 15. Test sorting options in GET /api/backups/fragment
+    let req_sort_size = Request::builder()
+        .uri("/api/backups/fragment?sort=size&order=desc")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_sort_size = router.clone().oneshot(req_sort_size).await.unwrap();
+    assert_eq!(res_sort_size.status(), StatusCode::OK);
+    let sort_bytes = to_bytes(res_sort_size.into_body(), usize::MAX).await.unwrap();
+    let sort_html = String::from_utf8(sort_bytes.to_vec()).unwrap();
+    assert!(sort_html.contains("data-sort-field=\"size\""));
+    assert!(sort_html.contains("data-sort-order=\"desc\""));
+    assert!(sort_html.contains("id=\"backup-sort-select\""));
+    assert!(sort_html.contains("sortBackupTable"));
+
+    let req_sort_name = Request::builder()
+        .uri("/api/backups/fragment?sort=name&order=asc")
+        .header("cookie", cookie_str)
+        .body(Body::empty())
+        .unwrap();
+    let res_sort_name = router.oneshot(req_sort_name).await.unwrap();
+    assert_eq!(res_sort_name.status(), StatusCode::OK);
+    let name_bytes = to_bytes(res_sort_name.into_body(), usize::MAX).await.unwrap();
+    let name_html = String::from_utf8(name_bytes.to_vec()).unwrap();
+    assert!(name_html.contains("data-sort-field=\"name\""));
+    assert!(name_html.contains("data-sort-order=\"asc\""));
+}
+
+#[test]
+fn test_extract_file_timestamp() {
+    use crate::infrastructure::http::views::backups::extract_file_timestamp;
+
+    let rfc_ts = extract_file_timestamp("Wed, 14 Oct 2026 22:00:00 +0000", "anything.zip");
+    assert_eq!(rfc_ts, 1792015200);
+
+    let fn_ts = extract_file_timestamp("", "vaultwarden_backup_20261014_220000.zip.enc");
+    assert_eq!(fn_ts, 1792015200);
+
+    let invalid_ts = extract_file_timestamp("invalid", "custom.zip");
+    assert_eq!(invalid_ts, 0);
 }
 
 #[tokio::test]

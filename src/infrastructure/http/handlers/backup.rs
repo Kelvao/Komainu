@@ -13,6 +13,8 @@ use crate::infrastructure::http::AppState;
 pub struct BackupsPageQuery {
     pub pcloud_connected: Option<String>,
     pub pcloud_error: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
 }
 
 pub async fn backups_page(
@@ -43,7 +45,13 @@ pub async fn backups_page(
         None
     };
 
-    let fragment = render_backups_fragment(&state, i18n, banner_msg).await;
+    let fragment = render_backups_fragment(
+        &state,
+        i18n,
+        banner_msg,
+        query.sort.as_deref(),
+        query.order.as_deref(),
+    ).await;
     let html = render_backups_page(i18n, &fragment);
     Html(html).into_response()
 }
@@ -115,7 +123,7 @@ pub async fn backup_save_config_handler(
         Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
     };
 
-    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+    Html(render_backups_fragment(&state, &i18n, msg, None, None).await).into_response()
 }
 
 #[derive(Deserialize, Default)]
@@ -341,7 +349,7 @@ pub async fn pcloud_disconnect_handler(
     let _ = state.backup_service.save_config(&cfg).await;
 
     let msg = Some((true, i18n.backups.pcloud_disconnected_success.clone()));
-    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+    Html(render_backups_fragment(&state, &i18n, msg, None, None).await).into_response()
 }
 
 pub async fn backup_run_now_handler(
@@ -359,12 +367,19 @@ pub async fn backup_run_now_handler(
         Err(e) => Some((false, format!("{}: {e}", i18n.common.operation_failed))),
     };
 
-    Html(render_backups_fragment(&state, &i18n, msg).await).into_response()
+    Html(render_backups_fragment(&state, &i18n, msg, None, None).await).into_response()
+}
+
+#[derive(Deserialize, Default)]
+pub struct BackupFragmentQuery {
+    pub sort: Option<String>,
+    pub order: Option<String>,
 }
 
 pub async fn backup_fragment_handler(
     jar: SignedCookieJar,
     State(state): State<AppState>,
+    Query(query): Query<BackupFragmentQuery>,
 ) -> Response {
     let i18n = resolve_i18n(&jar, &state);
     if !is_authenticated(&jar, &state) {
@@ -373,7 +388,13 @@ pub async fn backup_fragment_handler(
         return (StatusCode::UNAUTHORIZED, headers, i18n.common.session_expired.clone()).into_response();
     }
 
-    Html(render_backups_fragment(&state, &i18n, None).await).into_response()
+    Html(render_backups_fragment(
+        &state,
+        &i18n,
+        None,
+        query.sort.as_deref(),
+        query.order.as_deref(),
+    ).await).into_response()
 }
 
 #[derive(Deserialize)]
