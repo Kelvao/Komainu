@@ -20,7 +20,7 @@ uuid = { version = "1", default-features = false, features = ["v4"] }
 sha2 = "0.10"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-openssl = { version = "0.10", features = ["vendored"] }
+ring = "0.17"
 time = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 cron = "0.15"

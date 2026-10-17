@@ -95,160 +95,161 @@ impl fmt::Display for BackupError {
 
 impl std::error::Error for BackupError {}
 
+use ring::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
+use ring::pbkdf2;
+use ring::rand::{SecureRandom, SystemRandom};
+use std::num::NonZeroU32;
+
+fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
+    let mut key = [0u8; 32];
+    pbkdf2::derive(
+        pbkdf2::PBKDF2_HMAC_SHA256,
+        NonZeroU32::new(100_000).unwrap(),
+        salt,
+        password.as_bytes(),
+        &mut key,
+    );
+    key
+}
+
+fn generate_random<const N: usize>(rng: &SystemRandom) -> Result<[u8; N], BackupError> {
+    let mut bytes = [0u8; N];
+    rng.fill(&mut bytes)
+        .map_err(|e| BackupError::EncryptionError(format!("Secure random generation failed: {e}")))?;
+    Ok(bytes)
+}
+
 /// Encrypt arbitrary data using AES-256-GCM with key derived via PBKDF2-HMAC-SHA256 (100k rounds)
 /// Output binary format: [16-byte SALT | 12-byte NONCE | 16-byte AUTH TAG | CIPHERTEXT]
 pub fn encrypt_aes_256_gcm(data: &[u8], password: &str) -> Result<Vec<u8>, BackupError> {
-    use openssl::hash::MessageDigest;
-    use openssl::pkcs5::pbkdf2_hmac;
-    use openssl::rand::rand_bytes;
-    use openssl::symm::{encrypt_aead, Cipher};
-
     if password.is_empty() {
         return Err(BackupError::EncryptionError("Encryption password cannot be empty".to_string()));
     }
 
-    let mut salt = [0u8; 16];
-    rand_bytes(&mut salt).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let rng = SystemRandom::new();
+    let salt: [u8; 16] = generate_random(&rng)?;
+    let key_bytes = derive_key(password, &salt);
+    let nonce_bytes: [u8; 12] = generate_random(&rng)?;
 
-    let mut key = [0u8; 32];
-    pbkdf2_hmac(password.as_bytes(), &salt, 100_000, MessageDigest::sha256(), &mut key)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes)
+        .map_err(|_| BackupError::EncryptionError("Failed to initialize AES-256-GCM key".to_string()))?;
+    let key = LessSafeKey::new(unbound_key);
 
-    let mut nonce = [0u8; 12];
-    rand_bytes(&mut nonce).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let nonce = Nonce::try_assume_unique_for_key(&nonce_bytes)
+        .map_err(|_| BackupError::EncryptionError("Invalid nonce".to_string()))?;
 
-    let cipher = Cipher::aes_256_gcm();
-    let mut tag = [0u8; 16];
-    let ciphertext = encrypt_aead(cipher, &key, Some(&nonce), &[], data, &mut tag)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let mut in_out = data.to_vec();
+    let tag = key
+        .seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out)
+        .map_err(|_| BackupError::EncryptionError("Encryption failed".to_string()))?;
 
-    let mut out = Vec::with_capacity(16 + 12 + 16 + ciphertext.len());
+    let mut out = Vec::with_capacity(16 + 12 + 16 + in_out.len());
     out.extend_from_slice(&salt);
-    out.extend_from_slice(&nonce);
-    out.extend_from_slice(&tag);
-    out.extend_from_slice(&ciphertext);
+    out.extend_from_slice(&nonce_bytes);
+    out.extend_from_slice(tag.as_ref());
+    out.extend_from_slice(&in_out);
     Ok(out)
 }
 
 /// Stream-encrypt a file on disk using AES-256-GCM.
-/// Memory usage is constant (bounded to a 64KB buffer) regardless of file size.
 pub fn encrypt_file_aes_256_gcm(
     src_path: &std::path::Path,
     dst_path: &std::path::Path,
     password: &str,
 ) -> Result<u64, BackupError> {
     use std::fs::File;
-    use std::io::{Read, Seek, SeekFrom, Write};
-    use openssl::hash::MessageDigest;
-    use openssl::pkcs5::pbkdf2_hmac;
-    use openssl::rand::rand_bytes;
-    use openssl::symm::{Cipher, Crypter, Mode};
+    use std::io::{BufWriter, Read, Write};
 
     if password.is_empty() {
         return Err(BackupError::EncryptionError("Encryption password cannot be empty".to_string()));
     }
 
-    let mut salt = [0u8; 16];
-    rand_bytes(&mut salt).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let rng = SystemRandom::new();
+    let salt: [u8; 16] = generate_random(&rng)?;
+    let key_bytes = derive_key(password, &salt);
+    let nonce_bytes: [u8; 12] = generate_random(&rng)?;
 
-    let mut key = [0u8; 32];
-    pbkdf2_hmac(password.as_bytes(), &salt, 100_000, MessageDigest::sha256(), &mut key)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes)
+        .map_err(|_| BackupError::EncryptionError("Failed to initialize AES-256-GCM key".to_string()))?;
+    let key = LessSafeKey::new(unbound_key);
 
-    let mut nonce = [0u8; 12];
-    rand_bytes(&mut nonce).map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let nonce = Nonce::try_assume_unique_for_key(&nonce_bytes)
+        .map_err(|_| BackupError::EncryptionError("Invalid nonce".to_string()))?;
 
-    let mut in_file = std::io::BufReader::with_capacity(64 * 1024, File::open(src_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?);
-    let mut out_file = std::io::BufWriter::with_capacity(128 * 1024, File::create(dst_path)
-        .map_err(|e| BackupError::IoError(format!("Failed to create encrypted file: {e}")))?);
+    let mut src_file = File::open(src_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to open file for encryption: {e}")))?;
+    let file_len = src_file
+        .metadata()
+        .map_err(|e| BackupError::IoError(format!("Failed reading file metadata: {e}")))?
+        .len() as usize;
 
-    // Write header: salt (16), nonce (12), placeholder tag (16)
-    out_file.write_all(&salt)
+    let mut in_out = Vec::with_capacity(file_len);
+    src_file
+        .read_to_end(&mut in_out)
+        .map_err(|e| BackupError::IoError(format!("Failed reading file for encryption: {e}")))?;
+
+    let tag = key
+        .seal_in_place_separate_tag(nonce, Aad::empty(), &mut in_out)
+        .map_err(|_| BackupError::EncryptionError("Encryption failed".to_string()))?;
+
+    let dst_file = File::create(dst_path)
+        .map_err(|e| BackupError::IoError(format!("Failed to create encrypted file: {e}")))?;
+    let mut writer = BufWriter::with_capacity(128 * 1024, dst_file);
+
+    writer
+        .write_all(&salt)
         .map_err(|e| BackupError::IoError(format!("Failed to write salt: {e}")))?;
-    out_file.write_all(&nonce)
+    writer
+        .write_all(&nonce_bytes)
         .map_err(|e| BackupError::IoError(format!("Failed to write nonce: {e}")))?;
-    let placeholder_tag = [0u8; 16];
-    out_file.write_all(&placeholder_tag)
-        .map_err(|e| BackupError::IoError(format!("Failed to write placeholder tag: {e}")))?;
+    writer
+        .write_all(tag.as_ref())
+        .map_err(|e| BackupError::IoError(format!("Failed to write tag: {e}")))?;
+    writer
+        .write_all(&in_out)
+        .map_err(|e| BackupError::IoError(format!("Failed writing ciphertext: {e}")))?;
+    writer
+        .flush()
+        .map_err(|e| BackupError::IoError(format!("Failed flushing encrypted file: {e}")))?;
 
-    let cipher = Cipher::aes_256_gcm();
-    let mut crypter = Crypter::new(cipher, Mode::Encrypt, &key, Some(&nonce))
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-
-    let mut in_buf = [0u8; 64 * 1024];
-    let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
-    let mut bytes_since_yield = 0usize;
-
-    loop {
-        let n = in_file.read(&mut in_buf)
-            .map_err(|e| BackupError::IoError(format!("Failed reading input for encryption: {e}")))?;
-        if n == 0 {
-            break;
-        }
-        let count = crypter.update(&in_buf[..n], &mut out_buf)
-            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-        out_file.write_all(&out_buf[..count])
-            .map_err(|e| BackupError::IoError(format!("Failed writing ciphertext chunk: {e}")))?;
-
-        bytes_since_yield += n;
-        if bytes_since_yield >= 5 * 1024 * 1024 {
-            bytes_since_yield = 0;
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-    }
-
-    let final_count = crypter.finalize(&mut out_buf)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-    if final_count > 0 {
-        out_file.write_all(&out_buf[..final_count])
-            .map_err(|e| BackupError::IoError(format!("Failed writing final ciphertext chunk: {e}")))?;
-    }
-
-    let mut tag = [0u8; 16];
-    crypter.get_tag(&mut tag)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-
-    // Seek back to tag position (offset 28) and write actual auth tag
-    out_file.seek(SeekFrom::Start(28))
-        .map_err(|e| BackupError::IoError(format!("Failed to seek to tag offset: {e}")))?;
-    out_file.write_all(&tag)
-        .map_err(|e| BackupError::IoError(format!("Failed to write auth tag: {e}")))?;
-    out_file.flush()
-        .map_err(|e| BackupError::IoError(format!("Failed to flush encrypted file: {e}")))?;
-
-    let total_len = out_file.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
+    let total_len = (16 + 12 + 16 + in_out.len()) as u64;
     Ok(total_len)
 }
 
 /// Decrypt data produced by `encrypt_aes_256_gcm`
 pub fn decrypt_aes_256_gcm(payload: &[u8], password: &str) -> Result<Vec<u8>, BackupError> {
-    use openssl::hash::MessageDigest;
-    use openssl::pkcs5::pbkdf2_hmac;
-    use openssl::symm::{decrypt_aead, Cipher};
-
+    if password.is_empty() {
+        return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
+    }
     if payload.len() < 16 + 12 + 16 {
         return Err(BackupError::EncryptionError("Ciphertext payload too short".to_string()));
     }
 
     let salt = &payload[..16];
-    let nonce = &payload[16..28];
-    let tag = &payload[28..44];
+    let nonce_bytes = &payload[16..28];
+    let tag_bytes = &payload[28..44];
     let ciphertext = &payload[44..];
 
-    let mut key = [0u8; 32];
-    pbkdf2_hmac(password.as_bytes(), salt, 100_000, MessageDigest::sha256(), &mut key)
-        .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+    let key_bytes = derive_key(password, salt);
 
-    let cipher = Cipher::aes_256_gcm();
-    let plaintext = decrypt_aead(cipher, &key, Some(nonce), &[], ciphertext, tag)
-        .map_err(|e| BackupError::EncryptionError(format!("Decryption authentication failed: {e}")))?;
+    let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes)
+        .map_err(|_| BackupError::EncryptionError("Failed to initialize AES-256-GCM key".to_string()))?;
+    let key = LessSafeKey::new(unbound_key);
 
-    Ok(plaintext)
+    let nonce = Nonce::try_assume_unique_for_key(nonce_bytes)
+        .map_err(|_| BackupError::EncryptionError("Invalid nonce".to_string()))?;
+
+    let tag = Tag::try_from(tag_bytes)
+        .map_err(|_| BackupError::EncryptionError("Invalid authentication tag".to_string()))?;
+
+    let mut in_out = ciphertext.to_vec();
+    key.open_in_place_separate_tag(nonce, Aad::empty(), tag, &mut in_out, 0..)
+        .map_err(|_| BackupError::EncryptionError("Decryption authentication failed".to_string()))?;
+
+    Ok(in_out)
 }
 
 /// Stream-decrypt a file on disk using AES-256-GCM.
-/// Memory usage is constant (bounded to a 64KB buffer) regardless of file size.
 pub fn decrypt_file_aes_256_gcm(
     src_path: &std::path::Path,
     dst_path: &std::path::Path,
@@ -256,76 +257,55 @@ pub fn decrypt_file_aes_256_gcm(
 ) -> Result<u64, BackupError> {
     let result = (|| -> Result<u64, BackupError> {
         use std::fs::File;
-        use std::io::{Read, Write};
-        use openssl::hash::MessageDigest;
-        use openssl::pkcs5::pbkdf2_hmac;
-        use openssl::symm::{Cipher, Crypter, Mode};
+        use std::io::{BufWriter, Read, Write};
 
         if password.is_empty() {
             return Err(BackupError::EncryptionError("Decryption password cannot be empty".to_string()));
         }
 
-        let mut in_file = std::io::BufReader::with_capacity(64 * 1024, File::open(src_path)
-            .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?);
-        let mut out_file = std::io::BufWriter::with_capacity(128 * 1024, File::create(dst_path)
-            .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?);
+        let mut in_file = File::open(src_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to open file for decryption: {e}")))?;
 
         let mut header = [0u8; 16 + 12 + 16];
-        in_file.read_exact(&mut header)
+        in_file
+            .read_exact(&mut header)
             .map_err(|e| BackupError::EncryptionError(format!("Ciphertext payload too short or invalid header: {e}")))?;
 
         let salt = &header[..16];
-        let nonce = &header[16..28];
-        let tag = &header[28..44];
+        let nonce_bytes = &header[16..28];
+        let tag_bytes = &header[28..44];
 
-        let mut key = [0u8; 32];
-        pbkdf2_hmac(password.as_bytes(), salt, 100_000, MessageDigest::sha256(), &mut key)
-            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+        let mut in_out = Vec::new();
+        in_file
+            .read_to_end(&mut in_out)
+            .map_err(|e| BackupError::IoError(format!("Failed reading encrypted stream: {e}")))?;
 
-        let cipher = Cipher::aes_256_gcm();
-        let mut crypter = Crypter::new(cipher, Mode::Decrypt, &key, Some(nonce))
-            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
-        crypter.set_tag(tag)
-            .map_err(|e| BackupError::EncryptionError(e.to_string()))?;
+        let key_bytes = derive_key(password, salt);
 
-        let mut in_buf = [0u8; 64 * 1024];
-        let mut out_buf = vec![0u8; in_buf.len() + cipher.block_size()];
-        let mut total_written = 0u64;
-        let mut bytes_since_yield = 0usize;
+        let unbound_key = UnboundKey::new(&AES_256_GCM, &key_bytes)
+            .map_err(|_| BackupError::EncryptionError("Failed to initialize AES-256-GCM key".to_string()))?;
+        let key = LessSafeKey::new(unbound_key);
 
-        loop {
-            let n = in_file.read(&mut in_buf)
-                .map_err(|e| BackupError::IoError(format!("Failed reading encrypted stream: {e}")))?;
-            if n == 0 {
-                break;
-            }
-            let count = crypter.update(&in_buf[..n], &mut out_buf)
-                .map_err(|e| BackupError::EncryptionError(format!("Decryption failed: {e}")))?;
-            if count > 0 {
-                out_file.write_all(&out_buf[..count])
-                    .map_err(|e| BackupError::IoError(format!("Failed writing decrypted chunk: {e}")))?;
-                total_written += count as u64;
-            }
+        let nonce = Nonce::try_assume_unique_for_key(nonce_bytes)
+            .map_err(|_| BackupError::EncryptionError("Invalid nonce".to_string()))?;
 
-            bytes_since_yield += n;
-            if bytes_since_yield >= 5 * 1024 * 1024 {
-                bytes_since_yield = 0;
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-        }
+        let tag = Tag::try_from(tag_bytes)
+            .map_err(|_| BackupError::EncryptionError("Invalid authentication tag".to_string()))?;
 
-        let final_count = crypter.finalize(&mut out_buf)
-            .map_err(|e| BackupError::EncryptionError(format!("Decryption authentication failed: {e}")))?;
-        if final_count > 0 {
-            out_file.write_all(&out_buf[..final_count])
-                .map_err(|e| BackupError::IoError(format!("Failed writing final decrypted chunk: {e}")))?;
-            total_written += final_count as u64;
-        }
+        key.open_in_place_separate_tag(nonce, Aad::empty(), tag, &mut in_out, 0..)
+            .map_err(|_| BackupError::EncryptionError("Decryption authentication failed".to_string()))?;
 
-        out_file.flush()
-            .map_err(|e| BackupError::IoError(format!("Failed to flush decrypted file: {e}")))?;
+        let out_file = File::create(dst_path)
+            .map_err(|e| BackupError::IoError(format!("Failed to create decrypted file: {e}")))?;
+        let mut writer = BufWriter::with_capacity(128 * 1024, out_file);
+        writer
+            .write_all(&in_out)
+            .map_err(|e| BackupError::IoError(format!("Failed writing decrypted data: {e}")))?;
+        writer
+            .flush()
+            .map_err(|e| BackupError::IoError(format!("Failed flushing decrypted file: {e}")))?;
 
-        Ok(total_written)
+        Ok(in_out.len() as u64)
     })();
 
     if result.is_err() {
