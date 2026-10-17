@@ -61,3 +61,16 @@ pub async fn theme_css_asset_handler() -> impl IntoResponse {
     )
 }
 
+pub const HTMX_JS: &str = include_str!("../htmx.min.js");
+
+pub async fn htmx_script_handler() -> impl IntoResponse {
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        HTMX_JS,
+    )
+}
+
+

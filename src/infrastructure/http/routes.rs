@@ -16,7 +16,7 @@ pub async fn security_headers_middleware(request: Request, next: Next) -> Respon
     headers.insert(axum::http::header::REFERRER_POLICY, "strict-origin-when-cross-origin".parse().unwrap());
     headers.insert(
         axum::http::header::CONTENT_SECURITY_POLICY,
-        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
             .parse()
             .unwrap(),
     );
@@ -74,6 +74,7 @@ pub fn create_router(state: AppState) -> Router {
         // Rotas públicas
         .route("/health", get(health_check))
         .route("/assets/webauthn-json.js", get(webauthn_json_script_handler))
+        .route("/assets/htmx.js", get(htmx_script_handler))
         .route("/assets/theme.css", get(theme_css_asset_handler))
         .route("/set-lang", get(set_lang_handler))
         .route("/login", get(login_page))

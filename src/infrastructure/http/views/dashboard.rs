@@ -8,7 +8,7 @@ pub fn render_dashboard_page(i18n: &Translations, fragment: &str) -> String {
     let navbar = render_navbar(i18n, ActiveNav::Home, "/");
     let head_tags = theme::render_head(
         &i18n.dashboard.page_title,
-        r#"<script src="https://unpkg.com/htmx.org@2.0.4"></script>"#,
+        r#"<script src="/assets/htmx.js"></script>"#,
     );
     format!(
         r##"<!DOCTYPE html>
