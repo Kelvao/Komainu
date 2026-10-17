@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Rust-1.85%2B-orange?style=for-the-badge&logo=rust" alt="Rust" />
   <img src="https://img.shields.io/badge/Pure_Rust-Zero_C%2FOpenSSL_Deps-success?style=for-the-badge" alt="Pure Rust" />
   <img src="https://img.shields.io/badge/MUSL-100%25_Static_Ready-purple?style=for-the-badge" alt="MUSL Static Ready" />
-  <img src="https://img.shields.io/badge/Binary_Size-~4.9_MB_(~1.8_MB_UPX)-blue?style=for-the-badge" alt="Binary Size" />
+  <img src="https://img.shields.io/badge/Binary_Size-~2.0_MB_(compressed)-success?style=for-the-badge" alt="Binary Size" />
   <img src="https://img.shields.io/badge/Auth-WebAuthn_%2F_Passkeys-rose?style=for-the-badge&logo=fido" alt="Passkeys" />
   <img src="https://img.shields.io/badge/Backups-AES--256--GCM%20%2B%20pCloud-emerald?style=for-the-badge" alt="Encrypted Backups" />
   <img src="https://img.shields.io/badge/Frontend-HTMX_%2B_Tailwind-informational?style=for-the-badge" alt="HTMX" />
@@ -23,7 +23,7 @@ Self-hosting Vaultwarden gives you complete control over your passwords and secr
 **Komainu** solves this with a hyper-focused, pure Rust single-binary management suite:
 - **100% Pure Rust with Zero C/OpenSSL Dependencies**: Uses pure Rust cryptography (`passkey-auth`, `ring`, `aes-gcm`). No `libssl-dev`, no `openssl-sys`, and no C toolchains required.
 - **Effortless Static MUSL Compilation**: Builds out of the box for `x86_64-unknown-linux-musl` for deployment on Alpine, scratch containers, or any Linux distribution without glibc or dynamic linking headaches.
-- **Ultra-compact Footprint**: Compiles into a single standalone binary (~4.9 MB uncompressed, ~1.8 MB with UPX compression).
+- **Ultra-compact Footprint**: Compiles into a single standalone binary (~2.0 MB with UPX compression).
 - **Passwordless Security**: Hardware-backed Passkey (WebAuthn/FIDO2) authentication with enforced single-admin model.
 - **Cross-Device Smartphone Key**: Log in on any PC by scanning a dynamic on-screen QR code with your smartphone camera and verifying biometrics on your phone.
 - **Automated & Encrypted Off-Site Backups**: Non-locking hot backup via `vaultwarden backup`, packaging attachments, sends, env, and RSA keys from `vw-data/`, encrypted client-side with AES-256-GCM, and uploaded to pCloud on a configurable cron schedule with remote cloud file browsing and one-click decrypted downloads.
@@ -191,7 +191,7 @@ rustup target add x86_64-unknown-linux-musl
 cargo build --release --target x86_64-unknown-linux-musl
 ```
 
-### 4. Maximum Binary Compression (< 2.0 MB)
+### 4. Maximum Binary Compression (~2.0 MB)
 The `Cargo.toml` is pre-configured with binary size optimization:
 ```toml
 [profile.release]
