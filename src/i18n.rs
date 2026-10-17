@@ -330,6 +330,12 @@ pub struct BackupsTranslations {
     pub sort_name_asc: String,
     #[serde(default = "default_b_sort_name_desc")]
     pub sort_name_desc: String,
+    #[serde(default = "default_b_page_prev")]
+    pub page_prev: String,
+    #[serde(default = "default_b_page_next")]
+    pub page_next: String,
+    #[serde(default = "default_b_page_info")]
+    pub page_info: String,
 }
 
 fn default_b_status() -> String { "Status do Agendamento & Operação".to_string() }
@@ -399,6 +405,9 @@ fn default_b_sort_size_desc() -> String { "Maior tamanho".to_string() }
 fn default_b_sort_size_asc() -> String { "Menor tamanho".to_string() }
 fn default_b_sort_name_asc() -> String { "Nome (A-Z)".to_string() }
 fn default_b_sort_name_desc() -> String { "Nome (Z-A)".to_string() }
+fn default_b_page_prev() -> String { "Anterior".to_string() }
+fn default_b_page_next() -> String { "Próxima".to_string() }
+fn default_b_page_info() -> String { "Página {} de {} ({} backups)".to_string() }
 
 static CACHED_TRANSLATIONS: std::sync::OnceLock<(std::sync::Arc<Translations>, std::sync::Arc<Translations>)> =
     std::sync::OnceLock::new();

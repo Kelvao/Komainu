@@ -96,12 +96,15 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+pub const BACKUPS_PAGE_SIZE: usize = 10;
+
 pub async fn render_backups_fragment(
     state: &AppState,
     i18n: &Translations,
     action_msg: Option<(bool, String)>,
     sort: Option<&str>,
     order: Option<&str>,
+    page: Option<usize>,
 ) -> String {
     let config = state.backup_service.get_config().await.unwrap_or_default();
     let mut history = state.backup_service.get_history().await.unwrap_or_default();
@@ -253,9 +256,23 @@ pub async fn render_backups_fragment(
         format!(r##"<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">{}</span>"##, i18n.backups.path_missing)
     };
 
+    let total_items = if !remote_files.is_empty() {
+        remote_files.len()
+    } else {
+        history.len()
+    };
+    let total_pages = if total_items > 0 {
+        (total_items + BACKUPS_PAGE_SIZE - 1) / BACKUPS_PAGE_SIZE
+    } else {
+        1
+    };
+    let current_page = page.unwrap_or(1).clamp(1, total_pages);
+    let start_idx = (current_page - 1) * BACKUPS_PAGE_SIZE;
+    let end_idx = (start_idx + BACKUPS_PAGE_SIZE).min(total_items);
+
     let mut history_rows = String::new();
     if !remote_files.is_empty() {
-        for file in remote_files {
+        for file in &remote_files[start_idx..end_idx] {
             let dt_str = format_file_date(&file.modified, &file.name);
             let sz_str = format_bytes(file.size_bytes);
             let enc_name = crate::infrastructure::pcloud::urlencoding_path(&file.name);
@@ -288,7 +305,7 @@ pub async fn render_backups_fragment(
             ));
         }
     } else if !history.is_empty() {
-        for rec in history.iter().take(20) {
+        for rec in &history[start_idx..end_idx] {
             let dt_str = chrono::DateTime::from_timestamp(rec.timestamp as i64, 0)
                 .map(|dt| dt.with_timezone(&chrono::Local).format("%d/%m/%Y %H:%M:%S").to_string())
                 .unwrap_or_else(|| "N/A".to_string());
@@ -418,9 +435,83 @@ pub async fn render_backups_fragment(
     };
 
     let poll_attr = if is_in_progress {
-        r##" hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-trigger="every 3s" hx-target="#backups-content" hx-swap="innerHTML""##
+        r##" hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input, #backup-page-input" hx-trigger="every 3s" hx-target="#backups-content" hx-swap="innerHTML""##
     } else {
         ""
+    };
+
+    let pagination_footer = if total_items > 0 {
+        let page_info_text = i18n
+            .backups
+            .page_info
+            .replacen("{}", &current_page.to_string(), 1)
+            .replacen("{}", &total_pages.to_string(), 1)
+            .replacen("{}", &total_items.to_string(), 1);
+
+        let controls = if total_pages > 1 {
+            let prev_btn = if current_page > 1 {
+                format!(
+                    r##"<button type="button" hx-get="/api/backups/fragment?page={}" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-target="#backups-content" hx-swap="innerHTML" class="px-2.5 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.06] transition-colors">{}</button>"##,
+                    current_page - 1,
+                    &i18n.backups.page_prev
+                )
+            } else {
+                format!(
+                    r##"<span class="px-2.5 py-1 rounded bg-white/[0.02] text-slate-600 border border-white/[0.04] cursor-not-allowed select-none">{}</span>"##,
+                    &i18n.backups.page_prev
+                )
+            };
+
+            let next_btn = if current_page < total_pages {
+                format!(
+                    r##"<button type="button" hx-get="/api/backups/fragment?page={}" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-target="#backups-content" hx-swap="innerHTML" class="px-2.5 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.06] transition-colors">{}</button>"##,
+                    current_page + 1,
+                    &i18n.backups.page_next
+                )
+            } else {
+                format!(
+                    r##"<span class="px-2.5 py-1 rounded bg-white/[0.02] text-slate-600 border border-white/[0.04] cursor-not-allowed select-none">{}</span>"##,
+                    &i18n.backups.page_next
+                )
+            };
+
+            let mut page_buttons = String::new();
+            let mut last_p = 0;
+            for p in 1..=total_pages {
+                if p == 1 || p == total_pages || (p >= current_page.saturating_sub(2) && p <= current_page + 2) {
+                    if last_p > 0 && p - last_p > 1 {
+                        page_buttons.push_str(r#"<span class="px-1.5 py-1 text-slate-600 select-none">...</span>"#);
+                    }
+                    if p == current_page {
+                        page_buttons.push_str(&format!(
+                            r##"<span class="px-2.5 py-1 rounded bg-rose-600 text-white font-bold border border-rose-500 shadow-sm select-none">{}</span>"##,
+                            p
+                        ));
+                    } else {
+                        page_buttons.push_str(&format!(
+                            r##"<button type="button" hx-get="/api/backups/fragment?page={}" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-target="#backups-content" hx-swap="innerHTML" class="px-2.5 py-1 rounded bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.06] transition-colors">{}</button>"##,
+                            p, p
+                        ));
+                    }
+                    last_p = p;
+                }
+            }
+
+            format!(
+                r##"<div class="flex items-center gap-1 order-1 sm:order-2">{prev_btn}{page_buttons}{next_btn}</div>"##
+            )
+        } else {
+            String::new()
+        };
+
+        format!(
+            r##"<div class="mt-4 pt-3 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
+                <div class="text-slate-400 order-2 sm:order-1">{page_info_text}</div>
+                {controls}
+            </div>"##
+        )
+    } else {
+        String::new()
     };
 
     format!(
@@ -594,6 +685,7 @@ pub async fn render_backups_fragment(
             <div class="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
                 <input type="hidden" id="backup-sort-field-input" name="sort" value="{sort_field}">
                 <input type="hidden" id="backup-sort-order-input" name="order" value="{sort_order}">
+                <input type="hidden" id="backup-page-input" name="page" value="{current_page}">
                 <div class="flex items-center gap-1.5">
                     <label for="backup-sort-select" class="text-slate-400 text-xs font-mono hidden sm:inline">{sort_by}:</label>
                     <select id="backup-sort-select" onchange="onBackupSortSelect(this.value)" class="px-2.5 py-1.5 sm:py-1 rounded-lg bg-canvas border border-white/[0.08] focus:border-rose-500/60 text-slate-200 text-xs font-mono cursor-pointer transition-colors">
@@ -605,7 +697,7 @@ pub async fn render_backups_fragment(
                         <option value="name-desc"{sel_name_desc}>{sort_name_desc}</option>
                     </select>
                 </div>
-                <button hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
+                <button hx-get="/api/backups/fragment" hx-include="#backup-sort-field-input, #backup-sort-order-input, #backup-page-input" hx-target="#backups-content" hx-swap="innerHTML" class="p-1.5 rounded-md hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors" title="Atualizar Histórico">
                     <svg class="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 </button>
             </div>
@@ -642,17 +734,13 @@ pub async fn render_backups_fragment(
                 </tbody>
             </table>
         </div>
+        {pagination_footer}
     </div>
 
     <script>
     function sortBackupTable(field, explicitOrder) {{
         const table = document.getElementById('backup-history-table');
         if (!table) return;
-        const tbody = table.querySelector('tbody');
-        if (!tbody) return;
-        const rows = Array.from(tbody.querySelectorAll('tr.backup-row'));
-        if (rows.length === 0) return;
-
         let currentField = table.getAttribute('data-sort-field') || 'date';
         let currentOrder = table.getAttribute('data-sort-order') || 'desc';
 
@@ -665,53 +753,11 @@ pub async fn render_backups_fragment(
             }}
         }}
 
-        table.setAttribute('data-sort-field', field);
-        table.setAttribute('data-sort-order', order);
-
-        const fInput = document.getElementById('backup-sort-field-input');
-        if (fInput) fInput.value = field;
-        const oInput = document.getElementById('backup-sort-order-input');
-        if (oInput) oInput.value = order;
-
-        const select = document.getElementById('backup-sort-select');
-        if (select) {{
-            select.value = field + '-' + order;
-        }}
-
-        const icons = {{
-            date: document.getElementById('sort-icon-date'),
-            name: document.getElementById('sort-icon-name'),
-            size: document.getElementById('sort-icon-size'),
-        }};
-        for (const [k, el] of Object.entries(icons)) {{
-            if (!el) continue;
-            if (k === field) {{
-                el.textContent = order === 'asc' ? '▲' : '▼';
-                el.className = 'text-rose-400 font-mono text-[10px]';
-            }} else {{
-                el.textContent = '↕';
-                el.className = 'text-slate-600 font-mono text-[10px] group-hover:text-slate-400';
-            }}
-        }}
-
-        rows.sort((a, b) => {{
-            if (field === 'date') {{
-                const valA = parseInt(a.getAttribute('data-date') || '0', 10);
-                const valB = parseInt(b.getAttribute('data-date') || '0', 10);
-                return order === 'asc' ? valA - valB : valB - valA;
-            }} else if (field === 'size') {{
-                const valA = parseInt(a.getAttribute('data-size') || '0', 10);
-                const valB = parseInt(b.getAttribute('data-size') || '0', 10);
-                return order === 'asc' ? valA - valB : valB - valA;
-            }} else {{
-                const valA = (a.getAttribute('data-name') || '').toLowerCase();
-                const valB = (b.getAttribute('data-name') || '').toLowerCase();
-                return order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-            }}
-        }});
-
-        for (const row of rows) {{
-            tbody.appendChild(row);
+        if (window.htmx) {{
+            window.htmx.ajax('GET', '/api/backups/fragment?sort=' + encodeURIComponent(field) + '&order=' + encodeURIComponent(order) + '&page=1', {{
+                target: '#backups-content',
+                swap: 'innerHTML'
+            }});
         }}
     }}
 
@@ -821,6 +867,8 @@ pub async fn render_backups_fragment(
         table_status = i18n.backups.table_status,
         table_action = i18n.backups.table_action,
         history_rows = history_rows,
+        current_page = current_page,
+        pagination_footer = pagination_footer,
     )
 }
 

@@ -183,7 +183,10 @@
     "sort_size_desc": "Largest size",
     "sort_size_asc": "Smallest size",
     "sort_name_asc": "Name (A-Z)",
-    "sort_name_desc": "Name (Z-A)"
+    "sort_name_desc": "Name (Z-A)",
+    "page_prev": "Previous",
+    "page_next": "Next",
+    "page_info": "Page {} of {} ({} backups)"
   }
 }
 

@@ -1248,6 +1248,124 @@ fn test_html_escape() {
     assert_eq!(views::html_escape("Safe string 123"), "Safe string 123");
 }
 
+#[tokio::test]
+async fn test_backup_pagination() {
+    struct MockPCloudPaginatedClient;
+    impl PCloudClientPort for MockPCloudPaginatedClient {
+        fn upload(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _folder: &str,
+            _filename: &str,
+            _file_path: &std::path::Path,
+        ) -> BoxFuture<'_, Result<(), BackupError>> {
+            Box::pin(async move { Ok(()) })
+        }
+        fn list_folder(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _folder: &str,
+        ) -> BoxFuture<'_, Result<Vec<PCloudRemoteFile>, BackupError>> {
+            Box::pin(async move {
+                let mut files = Vec::new();
+                for i in 1..=25 {
+                    files.push(PCloudRemoteFile {
+                        fileid: i as u64,
+                        name: format!("vaultwarden_backup_{:02}.zip.enc", i),
+                        size_bytes: (i as u64) * 1024,
+                        modified: format!("Sat, {:02} Oct 2026 22:00:00 +0000", (i % 28) + 1),
+                    });
+                }
+                Ok(files)
+            })
+        }
+        fn download_file(
+            &self,
+            _region: &PCloudRegion,
+            _token: &str,
+            _fileid: u64,
+            _dest_path: &std::path::Path,
+        ) -> BoxFuture<'_, Result<(), BackupError>> {
+            Box::pin(async move { Ok(()) })
+        }
+    }
+
+    let config_store = Arc::new(MockBackupConfigStore::new());
+    config_store.save_config(&BackupConfig {
+        pcloud_token: "mock_token".to_string(),
+        ..Default::default()
+    }).await.unwrap();
+
+    let backup_service = Arc::new(BackupService::new(
+        Arc::new(MockContainerPort),
+        config_store,
+        Arc::new(MockPCloudPaginatedClient),
+        "vaultwarden".to_string(),
+        "/tmp/test_vw_data",
+    ));
+
+    let auth_service = Arc::new(AuthService::new("localhost", "http://localhost:3000", Arc::new(MockCredentialStore)).unwrap());
+    let mut state = create_test_app_state(auth_service, "pt-BR");
+    state.backup_service = backup_service;
+
+    // Page 1 with name asc
+    let html_p1 = views::backups::render_backups_fragment(
+        &state,
+        &state.i18n,
+        None,
+        Some("name"),
+        Some("asc"),
+        Some(1),
+    ).await;
+
+    assert!(html_p1.contains("vaultwarden_backup_01.zip.enc"));
+    assert!(html_p1.contains("vaultwarden_backup_10.zip.enc"));
+    assert!(!html_p1.contains("vaultwarden_backup_11.zip.enc"));
+    assert!(!html_p1.contains("vaultwarden_backup_25.zip.enc"));
+    assert!(html_p1.contains("Página 1 de 3 (25 backups)"));
+    assert!(html_p1.contains("page=2"));
+    assert!(html_p1.contains("name=\"page\" value=\"1\""));
+
+    // Page 2
+    let html_p2 = views::backups::render_backups_fragment(
+        &state,
+        &state.i18n,
+        None,
+        Some("name"),
+        Some("asc"),
+        Some(2),
+    ).await;
+
+    assert!(!html_p2.contains("vaultwarden_backup_01.zip.enc"));
+    assert!(html_p2.contains("vaultwarden_backup_11.zip.enc"));
+    assert!(html_p2.contains("vaultwarden_backup_20.zip.enc"));
+    assert!(!html_p2.contains("vaultwarden_backup_21.zip.enc"));
+    assert!(html_p2.contains("Página 2 de 3 (25 backups)"));
+    assert!(html_p2.contains("page=1"));
+    assert!(html_p2.contains("page=3"));
+    assert!(html_p2.contains("name=\"page\" value=\"2\""));
+
+    // Page 3
+    let html_p3 = views::backups::render_backups_fragment(
+        &state,
+        &state.i18n,
+        None,
+        Some("name"),
+        Some("asc"),
+        Some(3),
+    ).await;
+
+    assert!(!html_p3.contains("vaultwarden_backup_20.zip.enc"));
+    assert!(html_p3.contains("vaultwarden_backup_21.zip.enc"));
+    assert!(html_p3.contains("vaultwarden_backup_25.zip.enc"));
+    assert!(html_p3.contains("Página 3 de 3 (25 backups)"));
+    assert!(html_p3.contains("page=2"));
+    assert!(html_p3.contains("name=\"page\" value=\"3\""));
+}
+
+
 
 
 
