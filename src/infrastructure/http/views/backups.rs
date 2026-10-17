@@ -198,7 +198,13 @@ pub async fn render_backups_fragment(
             Ok(s) => s
                 .upcoming(chrono::Local)
                 .next()
-                .map(|dt| dt.format("%d/%m/%Y às %H:%M:%S").to_string())
+                .map(|dt| {
+                    if i18n.lang == "en" {
+                        dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        dt.format("%d/%m/%Y às %H:%M:%S").to_string()
+                    }
+                })
                 .unwrap_or_else(|| i18n.backups.no_scheduled_run.clone()),
             Err(_) => i18n.backups.no_scheduled_run.clone(),
         }
